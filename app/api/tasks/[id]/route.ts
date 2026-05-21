@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { tasks } from "@/db/schema";
 import { withAuth, badRequest, serverError } from "@/lib/api";
-import { rowToTask } from "../route";
+import { rowToTask } from "@/lib/db-mappers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

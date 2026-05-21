@@ -72,7 +72,7 @@ const defaultSettings: Settings = {
   openaiKey: "",
   openaiModel: "gpt-4o-mini",
   geminiKey: "",
-  geminiModel: "gemini-1.5-flash-latest",
+  geminiModel: "gemini-2.0-flash",
   primaryProvider: "auto",
   slackWebhook: "",
 

@@ -38,7 +38,7 @@ export interface AIKeys {
 }
 
 const DEFAULT_OPENAI_MODEL = "gpt-4o-mini";
-const DEFAULT_GEMINI_MODEL = "gemini-1.5-flash-latest";
+const DEFAULT_GEMINI_MODEL = "gemini-2.0-flash";
 
 function pickKeys(headerKeys: AIKeys | undefined): AIKeys {
   return {

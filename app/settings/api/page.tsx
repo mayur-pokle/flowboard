@@ -35,15 +35,17 @@ const OPENAI_MODELS = [
   { value: "gpt-3.5-turbo", label: "GPT-3.5 Turbo — legacy" }
 ];
 
+// 2.x models are what's universally available on free tier as of 2026.
+// 1.5 lineage has been deprecated for new accounts in most regions.
 const GEMINI_MODELS = [
-  { value: "gemini-1.5-flash-latest", label: "Gemini 1.5 Flash (latest) — fast, free tier" },
-  { value: "gemini-1.5-flash", label: "Gemini 1.5 Flash" },
-  { value: "gemini-1.5-flash-002", label: "Gemini 1.5 Flash 002" },
-  { value: "gemini-1.5-pro-latest", label: "Gemini 1.5 Pro (latest) — higher quality" },
-  { value: "gemini-1.5-pro", label: "Gemini 1.5 Pro" },
-  { value: "gemini-2.0-flash", label: "Gemini 2.0 Flash" },
+  { value: "gemini-2.0-flash", label: "Gemini 2.0 Flash — fast, free tier (recommended)" },
+  { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash" },
+  { value: "gemini-2.5-pro", label: "Gemini 2.5 Pro — higher quality" },
+  { value: "gemini-flash-latest", label: "Gemini Flash (latest alias)" },
+  { value: "gemini-pro-latest", label: "Gemini Pro (latest alias)" },
   { value: "gemini-2.0-flash-exp", label: "Gemini 2.0 Flash (experimental)" },
-  { value: "gemini-flash-latest", label: "Gemini Flash (latest alias)" }
+  { value: "gemini-1.5-flash-latest", label: "Gemini 1.5 Flash (legacy)" },
+  { value: "gemini-1.5-pro-latest", label: "Gemini 1.5 Pro (legacy)" }
 ];
 
 export default function SettingsApiPage() {
@@ -101,7 +103,7 @@ export default function SettingsApiPage() {
     try {
       await updateSettings({
         openaiModel: openaiModel.trim() || "gpt-4o-mini",
-        geminiModel: geminiModel.trim() || "gemini-1.5-flash-latest",
+        geminiModel: geminiModel.trim() || "gemini-2.0-flash",
         primaryProvider,
         companyName: companyName.trim(),
         websiteUrl: websiteUrl.trim(),
@@ -581,7 +583,7 @@ export default function SettingsApiPage() {
                   }
                 }
               }}
-              fallback="gemini-1.5-flash-latest"
+              fallback="gemini-2.0-flash"
             />
             <Hint>
               Set <code>GEMINI_API_KEY</code> in Vercel. If you see "Model not

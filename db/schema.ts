@@ -136,7 +136,7 @@ export const settings = pgTable("settings", {
   topicsToAvoid: text("topicsToAvoid").default("").notNull(),
   // Models — overridable per-workspace (server env still wins).
   openaiModel: text("openaiModel").default("gpt-4o-mini").notNull(),
-  geminiModel: text("geminiModel").default("gemini-1.5-flash-latest").notNull(),
+  geminiModel: text("geminiModel").default("gemini-2.0-flash").notNull(),
   // "auto" tries OpenAI first then falls back to Gemini. "openai" / "gemini"
   // pin to just one provider (no fallback). Mock is always last resort.
   primaryProvider: text("primaryProvider").default("auto").notNull(),

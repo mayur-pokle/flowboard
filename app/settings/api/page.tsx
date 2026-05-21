@@ -21,6 +21,30 @@ import { useStore, useHasHydrated } from "@/lib/store";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { toast } from "@/components/Toast";
+import type { PrimaryProvider } from "@/lib/types";
+
+// Curated model lists shown in dropdowns. Users can still type a custom
+// model name via the "Custom…" option if their account supports a model
+// that isn't in this list.
+const OPENAI_MODELS = [
+  { value: "gpt-4o-mini", label: "GPT-4o mini — fast, cheap (recommended)" },
+  { value: "gpt-4o", label: "GPT-4o — best quality, higher cost" },
+  { value: "gpt-4.1-mini", label: "GPT-4.1 mini" },
+  { value: "gpt-4.1", label: "GPT-4.1 — high quality" },
+  { value: "o4-mini", label: "o4 mini — reasoning model" },
+  { value: "gpt-3.5-turbo", label: "GPT-3.5 Turbo — legacy" }
+];
+
+const GEMINI_MODELS = [
+  { value: "gemini-1.5-flash-latest", label: "Gemini 1.5 Flash (latest) — fast, free tier" },
+  { value: "gemini-1.5-flash", label: "Gemini 1.5 Flash" },
+  { value: "gemini-1.5-flash-002", label: "Gemini 1.5 Flash 002" },
+  { value: "gemini-1.5-pro-latest", label: "Gemini 1.5 Pro (latest) — higher quality" },
+  { value: "gemini-1.5-pro", label: "Gemini 1.5 Pro" },
+  { value: "gemini-2.0-flash", label: "Gemini 2.0 Flash" },
+  { value: "gemini-2.0-flash-exp", label: "Gemini 2.0 Flash (experimental)" },
+  { value: "gemini-flash-latest", label: "Gemini Flash (latest alias)" }
+];
 
 export default function SettingsApiPage() {
   const hydrated = useHasHydrated();
@@ -34,6 +58,7 @@ export default function SettingsApiPage() {
   // Local form state, hydrated from the store once.
   const [openaiModel, setOpenaiModel] = useState("");
   const [geminiModel, setGeminiModel] = useState("");
+  const [primaryProvider, setPrimaryProvider] = useState<PrimaryProvider>("auto");
   const [companyName, setCompanyName] = useState("");
   const [websiteUrl, setWebsiteUrl] = useState("");
   const [niche, setNiche] = useState("");
@@ -57,6 +82,7 @@ export default function SettingsApiPage() {
     if (!hydrated) return;
     setOpenaiModel(settings.openaiModel);
     setGeminiModel(settings.geminiModel);
+    setPrimaryProvider(settings.primaryProvider);
     setCompanyName(settings.companyName);
     setWebsiteUrl(settings.websiteUrl);
     setNiche(settings.brandNiche);
@@ -76,6 +102,7 @@ export default function SettingsApiPage() {
       await updateSettings({
         openaiModel: openaiModel.trim() || "gpt-4o-mini",
         geminiModel: geminiModel.trim() || "gemini-1.5-flash-latest",
+        primaryProvider,
         companyName: companyName.trim(),
         websiteUrl: websiteUrl.trim(),
         brandNiche: niche.trim(),
@@ -417,118 +444,150 @@ export default function SettingsApiPage() {
         <Card
           icon={KeyRound}
           title="AI providers"
-          description="API keys are managed server-side via Vercel environment variables. Models are workspace-wide and editable here."
+          description="Choose which AI generates your topics and content, and which model to use."
         >
-          <div className="rounded-md border border-ink-200 bg-ink-50/60 p-3 mb-2">
+          {/* Provider selector */}
+          <Field label="Primary provider">
+            <div className="grid sm:grid-cols-3 gap-2">
+              <ProviderOption
+                value="auto"
+                current={primaryProvider}
+                onSelect={async () => {
+                  setPrimaryProvider("auto");
+                  try {
+                    await updateSettings({ primaryProvider: "auto" });
+                    toast("Provider set to Auto", "success");
+                  } catch (err) {
+                    toast((err as Error).message, "error");
+                  }
+                }}
+                title="Auto"
+                subtitle="OpenAI, fall back to Gemini"
+                configured={
+                  serverConfigured.openaiKey || serverConfigured.geminiKey
+                }
+              />
+              <ProviderOption
+                value="openai"
+                current={primaryProvider}
+                onSelect={async () => {
+                  setPrimaryProvider("openai");
+                  try {
+                    await updateSettings({ primaryProvider: "openai" });
+                    toast("Provider set to OpenAI only", "success");
+                  } catch (err) {
+                    toast((err as Error).message, "error");
+                  }
+                }}
+                title="OpenAI only"
+                subtitle="No fallback"
+                configured={serverConfigured.openaiKey}
+              />
+              <ProviderOption
+                value="gemini"
+                current={primaryProvider}
+                onSelect={async () => {
+                  setPrimaryProvider("gemini");
+                  try {
+                    await updateSettings({ primaryProvider: "gemini" });
+                    toast("Provider set to Gemini only", "success");
+                  } catch (err) {
+                    toast((err as Error).message, "error");
+                  }
+                }}
+                title="Gemini only"
+                subtitle="No fallback"
+                configured={serverConfigured.geminiKey}
+              />
+            </div>
+            <Hint>
+              If the selected provider fails (rate limit, bad model, etc.), the
+              app falls back to high-quality mock data. "Auto" tries OpenAI first
+              then Gemini.
+            </Hint>
+          </Field>
+
+          {/* OpenAI card */}
+          <div className="rounded-md border border-ink-200 bg-ink-50/60 p-3 mt-4">
             <div className="flex items-center justify-between mb-2">
-              <div className="text-xs font-medium text-ink-700">
-                OpenAI
-              </div>
+              <div className="text-xs font-medium text-ink-700">OpenAI</div>
               {serverConfigured.openaiKey ? (
                 <Badge tone="success">
                   <CheckCircle2 className="size-3" />
-                  Configured
+                  Key configured
                 </Badge>
               ) : (
                 <Badge tone="neutral">
                   <XCircle className="size-3" />
-                  Not configured
+                  Key not set
                 </Badge>
               )}
             </div>
+            <label className="text-xs font-medium text-ink-700 mb-1.5 block">
+              Model
+            </label>
+            <ModelSelect
+              value={openaiModel}
+              options={OPENAI_MODELS}
+              onChange={async (v) => {
+                setOpenaiModel(v);
+                if (v !== settings.openaiModel) {
+                  try {
+                    await updateSettings({ openaiModel: v });
+                    toast(`OpenAI model set to ${v}`, "success");
+                  } catch (err) {
+                    toast((err as Error).message, "error");
+                  }
+                }
+              }}
+              fallback="gpt-4o-mini"
+            />
             <Hint>
               Set <code>OPENAI_API_KEY</code> in Vercel → Project → Environment
-              Variables. Used model is below.
+              Variables to enable.
             </Hint>
-            <div className="mt-3">
-              <label className="text-xs font-medium text-ink-700 mb-1.5 block">
-                Model
-              </label>
-              <input
-                className="input font-mono text-sm"
-                list="openai-models"
-                value={openaiModel}
-                onChange={(e) => setOpenaiModel(e.target.value)}
-                onBlur={async () => {
-                  const v = openaiModel.trim() || "gpt-4o-mini";
-                  if (v !== settings.openaiModel) {
-                    try {
-                      await updateSettings({ openaiModel: v });
-                      toast(`OpenAI model set to ${v}`, "success");
-                    } catch (err) {
-                      toast((err as Error).message, "error");
-                    }
-                  }
-                }}
-                placeholder="gpt-4o-mini"
-              />
-              <datalist id="openai-models">
-                <option value="gpt-4o-mini" />
-                <option value="gpt-4o" />
-                <option value="gpt-4.1-mini" />
-                <option value="gpt-4.1" />
-                <option value="o4-mini" />
-                <option value="gpt-3.5-turbo" />
-              </datalist>
-            </div>
           </div>
 
-          <div className="rounded-md border border-ink-200 bg-ink-50/60 p-3">
+          {/* Gemini card */}
+          <div className="rounded-md border border-ink-200 bg-ink-50/60 p-3 mt-3">
             <div className="flex items-center justify-between mb-2">
-              <div className="text-xs font-medium text-ink-700">
-                Gemini
-              </div>
+              <div className="text-xs font-medium text-ink-700">Gemini</div>
               {serverConfigured.geminiKey ? (
                 <Badge tone="success">
                   <CheckCircle2 className="size-3" />
-                  Configured
+                  Key configured
                 </Badge>
               ) : (
                 <Badge tone="neutral">
                   <XCircle className="size-3" />
-                  Not configured
+                  Key not set
                 </Badge>
               )}
             </div>
+            <label className="text-xs font-medium text-ink-700 mb-1.5 block">
+              Model
+            </label>
+            <ModelSelect
+              value={geminiModel}
+              options={GEMINI_MODELS}
+              onChange={async (v) => {
+                setGeminiModel(v);
+                if (v !== settings.geminiModel) {
+                  try {
+                    await updateSettings({ geminiModel: v });
+                    toast(`Gemini model set to ${v}`, "success");
+                  } catch (err) {
+                    toast((err as Error).message, "error");
+                  }
+                }
+              }}
+              fallback="gemini-1.5-flash-latest"
+            />
             <Hint>
               Set <code>GEMINI_API_KEY</code> in Vercel. If you see "Model not
-              available," try a different option below — availability varies by
-              account.
+              available," try a different model — availability varies by
+              account region.
             </Hint>
-            <div className="mt-3">
-              <label className="text-xs font-medium text-ink-700 mb-1.5 block">
-                Model
-              </label>
-              <input
-                className="input font-mono text-sm"
-                list="gemini-models"
-                value={geminiModel}
-                onChange={(e) => setGeminiModel(e.target.value)}
-                onBlur={async () => {
-                  const v =
-                    geminiModel.trim() || "gemini-1.5-flash-latest";
-                  if (v !== settings.geminiModel) {
-                    try {
-                      await updateSettings({ geminiModel: v });
-                      toast(`Gemini model set to ${v}`, "success");
-                    } catch (err) {
-                      toast((err as Error).message, "error");
-                    }
-                  }
-                }}
-                placeholder="gemini-1.5-flash-latest"
-              />
-              <datalist id="gemini-models">
-                <option value="gemini-1.5-flash-latest" />
-                <option value="gemini-1.5-flash" />
-                <option value="gemini-1.5-flash-002" />
-                <option value="gemini-1.5-pro-latest" />
-                <option value="gemini-1.5-pro" />
-                <option value="gemini-2.0-flash" />
-                <option value="gemini-2.0-flash-exp" />
-                <option value="gemini-flash-latest" />
-              </datalist>
-            </div>
           </div>
         </Card>
 
@@ -717,6 +776,112 @@ function Field({
 
 function Hint({ children }: { children: React.ReactNode }) {
   return <p className="text-[11px] text-ink-500 mt-1.5">{children}</p>;
+}
+
+function ProviderOption({
+  value,
+  current,
+  onSelect,
+  title,
+  subtitle,
+  configured
+}: {
+  value: PrimaryProvider;
+  current: PrimaryProvider;
+  onSelect: () => void;
+  title: string;
+  subtitle: string;
+  configured: boolean;
+}) {
+  const selected = value === current;
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={`text-left rounded-md border p-3 transition focus-ring ${
+        selected
+          ? "border-brand-500 bg-brand-50/60 ring-1 ring-brand-300"
+          : "border-ink-200 bg-white hover:border-ink-300"
+      }`}
+    >
+      <div className="flex items-center justify-between mb-0.5">
+        <span className="text-sm font-medium text-ink-900">{title}</span>
+        {selected ? (
+          <span className="size-2 rounded-full bg-brand-600" />
+        ) : (
+          <span className="size-2 rounded-full border border-ink-300" />
+        )}
+      </div>
+      <div className="text-[11px] text-ink-500">{subtitle}</div>
+      {!configured ? (
+        <div className="text-[10px] text-amber-700 mt-1.5">
+          Key not configured server-side
+        </div>
+      ) : null}
+    </button>
+  );
+}
+
+function ModelSelect({
+  value,
+  options,
+  onChange,
+  fallback
+}: {
+  value: string;
+  options: { value: string; label: string }[];
+  onChange: (next: string) => void;
+  fallback: string;
+}) {
+  const isKnown = options.some((o) => o.value === value);
+  const showCustom = !isKnown && value !== "";
+  const [customMode, setCustomMode] = useState(showCustom);
+
+  return (
+    <div>
+      {!customMode ? (
+        <select
+          className="input"
+          value={isKnown ? value : ""}
+          onChange={(e) => {
+            const next = e.target.value;
+            if (next === "__custom__") {
+              setCustomMode(true);
+              return;
+            }
+            onChange(next || fallback);
+          }}
+        >
+          {options.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+          <option value="__custom__">Custom…</option>
+        </select>
+      ) : (
+        <div className="flex gap-2">
+          <input
+            className="input font-mono text-sm"
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder={fallback}
+            autoFocus
+          />
+          <button
+            type="button"
+            onClick={() => {
+              onChange(fallback);
+              setCustomMode(false);
+            }}
+            className="text-xs text-ink-500 hover:text-ink-800 px-2"
+          >
+            ← list
+          </button>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function computeCompleteness(p: {

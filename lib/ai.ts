@@ -27,11 +27,14 @@ export interface BrandContext {
   recentTitles?: string[];
 }
 
+export type PrimaryProvider = "auto" | "openai" | "gemini";
+
 export interface AIKeys {
   openai?: string;
   gemini?: string;
   openaiModel?: string;
   geminiModel?: string;
+  primaryProvider?: PrimaryProvider;
 }
 
 const DEFAULT_OPENAI_MODEL = "gpt-4o-mini";
@@ -44,8 +47,17 @@ function pickKeys(headerKeys: AIKeys | undefined): AIKeys {
     openaiModel:
       process.env.OPENAI_MODEL || headerKeys?.openaiModel || DEFAULT_OPENAI_MODEL,
     geminiModel:
-      process.env.GEMINI_MODEL || headerKeys?.geminiModel || DEFAULT_GEMINI_MODEL
+      process.env.GEMINI_MODEL || headerKeys?.geminiModel || DEFAULT_GEMINI_MODEL,
+    primaryProvider: headerKeys?.primaryProvider || "auto"
   };
+}
+
+// Returns the order in which to try providers based on the user's preference.
+function providerOrder(p: PrimaryProvider | undefined): Array<"openai" | "gemini"> {
+  if (p === "openai") return ["openai"];
+  if (p === "gemini") return ["gemini"];
+  // "auto" — OpenAI first, Gemini fallback.
+  return ["openai", "gemini"];
 }
 
 // ============================================================
@@ -171,38 +183,38 @@ export async function generateTopics(
 }> {
   const k = pickKeys(keys);
   const warnings: string[] = [];
+  const order = providerOrder(k.primaryProvider);
 
-  // Try OpenAI first
-  if (k.openai) {
-    try {
-      const raw = await generateTopicsOpenAI(
-        ctx,
-        count,
-        k.openai,
-        k.openaiModel || DEFAULT_OPENAI_MODEL
-      );
-      return { topics: normalizeTopics(raw), provider: "openai", warnings };
-    } catch (err) {
-      const msg = describeError(err);
-      console.error("[ai] OpenAI topics failed:", msg);
-      warnings.push(`OpenAI: ${msg}`);
+  for (const which of order) {
+    if (which === "openai" && k.openai) {
+      try {
+        const raw = await generateTopicsOpenAI(
+          ctx,
+          count,
+          k.openai,
+          k.openaiModel || DEFAULT_OPENAI_MODEL
+        );
+        return { topics: normalizeTopics(raw), provider: "openai", warnings };
+      } catch (err) {
+        const msg = describeError(err);
+        console.error("[ai] OpenAI topics failed:", msg);
+        warnings.push(`OpenAI: ${msg}`);
+      }
     }
-  }
-
-  // Fall back to Gemini
-  if (k.gemini) {
-    try {
-      const raw = await generateTopicsGemini(
-        ctx,
-        count,
-        k.gemini,
-        k.geminiModel || DEFAULT_GEMINI_MODEL
-      );
-      return { topics: normalizeTopics(raw), provider: "gemini", warnings };
-    } catch (err) {
-      const msg = describeError(err);
-      console.error("[ai] Gemini topics failed:", msg);
-      warnings.push(`Gemini: ${msg}`);
+    if (which === "gemini" && k.gemini) {
+      try {
+        const raw = await generateTopicsGemini(
+          ctx,
+          count,
+          k.gemini,
+          k.geminiModel || DEFAULT_GEMINI_MODEL
+        );
+        return { topics: normalizeTopics(raw), provider: "gemini", warnings };
+      } catch (err) {
+        const msg = describeError(err);
+        console.error("[ai] Gemini topics failed:", msg);
+        warnings.push(`Gemini: ${msg}`);
+      }
     }
   }
 
@@ -580,44 +592,46 @@ export async function generateContent(
 }> {
   const k = pickKeys(keys);
   const warnings: string[] = [];
+  const order = providerOrder(k.primaryProvider);
 
-  if (k.openai) {
-    try {
-      const raw = await generateContentOpenAI(
-        topic,
-        ctx,
-        k.openai,
-        k.openaiModel || DEFAULT_OPENAI_MODEL
-      );
-      return {
-        content: normalizeContent(raw, topic),
-        provider: "openai",
-        warnings
-      };
-    } catch (err) {
-      const msg = describeError(err);
-      console.error("[ai] OpenAI content failed:", msg);
-      warnings.push(`OpenAI: ${msg}`);
+  for (const which of order) {
+    if (which === "openai" && k.openai) {
+      try {
+        const raw = await generateContentOpenAI(
+          topic,
+          ctx,
+          k.openai,
+          k.openaiModel || DEFAULT_OPENAI_MODEL
+        );
+        return {
+          content: normalizeContent(raw, topic),
+          provider: "openai",
+          warnings
+        };
+      } catch (err) {
+        const msg = describeError(err);
+        console.error("[ai] OpenAI content failed:", msg);
+        warnings.push(`OpenAI: ${msg}`);
+      }
     }
-  }
-
-  if (k.gemini) {
-    try {
-      const raw = await generateContentGemini(
-        topic,
-        ctx,
-        k.gemini,
-        k.geminiModel || DEFAULT_GEMINI_MODEL
-      );
-      return {
-        content: normalizeContent(raw, topic),
-        provider: "gemini",
-        warnings
-      };
-    } catch (err) {
-      const msg = describeError(err);
-      console.error("[ai] Gemini content failed:", msg);
-      warnings.push(`Gemini: ${msg}`);
+    if (which === "gemini" && k.gemini) {
+      try {
+        const raw = await generateContentGemini(
+          topic,
+          ctx,
+          k.gemini,
+          k.geminiModel || DEFAULT_GEMINI_MODEL
+        );
+        return {
+          content: normalizeContent(raw, topic),
+          provider: "gemini",
+          warnings
+        };
+      } catch (err) {
+        const msg = describeError(err);
+        console.error("[ai] Gemini content failed:", msg);
+        warnings.push(`Gemini: ${msg}`);
+      }
     }
   }
 

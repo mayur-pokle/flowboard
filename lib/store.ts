@@ -73,6 +73,7 @@ const defaultSettings: Settings = {
   openaiModel: "gpt-4o-mini",
   geminiKey: "",
   geminiModel: "gemini-1.5-flash-latest",
+  primaryProvider: "auto",
   slackWebhook: "",
 
   // Brand profile (DB-backed, shared)
@@ -169,6 +170,14 @@ export const useStore = create<Store>()((set, get) => ({
           topicsToAvoid: s.topicsToAvoid,
           openaiModel: s.openaiModel,
           geminiModel: s.geminiModel,
+          primaryProvider:
+            (s as unknown as { primaryProvider?: string }).primaryProvider ===
+              "openai" ||
+            (s as unknown as { primaryProvider?: string }).primaryProvider ===
+              "gemini"
+              ? ((s as unknown as { primaryProvider: "openai" | "gemini" })
+                  .primaryProvider as "openai" | "gemini")
+              : "auto",
           competitors: s.competitors || []
         },
         lastGeneratedAt: s.lastGeneratedAt,
@@ -427,7 +436,8 @@ export const useStore = create<Store>()((set, get) => ({
         "seedKeywords",
         "topicsToAvoid",
         "openaiModel",
-        "geminiModel"
+        "geminiModel",
+        "primaryProvider"
       ] as const) {
         if (patch[k] !== undefined) serverPatch[k] = patch[k];
       }

@@ -24,7 +24,8 @@ const defaults = {
   seedKeywords: "",
   topicsToAvoid: "",
   openaiModel: "gpt-4o-mini",
-  geminiModel: "gemini-1.5-flash-latest"
+  geminiModel: "gemini-1.5-flash-latest",
+  primaryProvider: "auto"
 };
 
 async function ensureRow() {
@@ -80,7 +81,8 @@ export const PATCH = withAuth(async (_user, req) => {
       "seedKeywords",
       "topicsToAvoid",
       "openaiModel",
-      "geminiModel"
+      "geminiModel",
+      "primaryProvider"
     ] as const;
     const patch: Record<string, unknown> = { updatedAt: new Date() };
     for (const k of allowed) {

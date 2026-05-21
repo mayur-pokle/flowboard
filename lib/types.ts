@@ -61,12 +61,15 @@ export interface Competitor {
   notes: string;
 }
 
+export type PrimaryProvider = "auto" | "openai" | "gemini";
+
 export interface Settings {
   // AI providers + integrations
   openaiKey: string;
   openaiModel: string;
   geminiKey: string;
   geminiModel: string;
+  primaryProvider: PrimaryProvider;
   slackWebhook: string;
 
   // Brand profile

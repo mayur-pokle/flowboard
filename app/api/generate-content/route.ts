@@ -63,11 +63,18 @@ export async function POST(req: Request) {
     competitors: body.competitors
   };
 
+  const primaryProviderHeader = req.headers.get("x-primary-provider");
   const keys: AIKeys = {
     openai: req.headers.get("x-openai-key") || undefined,
     gemini: req.headers.get("x-gemini-key") || undefined,
     openaiModel: req.headers.get("x-openai-model") || undefined,
-    geminiModel: req.headers.get("x-gemini-model") || undefined
+    geminiModel: req.headers.get("x-gemini-model") || undefined,
+    primaryProvider:
+      primaryProviderHeader === "openai" ||
+      primaryProviderHeader === "gemini" ||
+      primaryProviderHeader === "auto"
+        ? primaryProviderHeader
+        : undefined
   };
 
   try {

@@ -87,9 +87,9 @@ export const topics = pgTable("topics", {
   rankingPotential: text("rankingPotential"),
   businessImpact: text("businessImpact"),
   createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
-  createdByUserId: text("createdByUserId").references(() => users.id, {
-    onDelete: "set null"
-  })
+  // No FK reference here so credentials-auth users (which aren't written to
+  // the users table on every sign-in) can still create topics.
+  createdByUserId: text("createdByUserId")
 });
 
 // "Never show again" memory — stable hash of (title + keyword).
@@ -116,9 +116,8 @@ export const tasks = pgTable("tasks", {
   tags: text("tags").array().notNull().default([]),
   createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
   updatedAt: timestamp("updatedAt", { mode: "date" }).defaultNow().notNull(),
-  createdByUserId: text("createdByUserId").references(() => users.id, {
-    onDelete: "set null"
-  })
+  // No FK — see note on topics.createdByUserId.
+  createdByUserId: text("createdByUserId")
 });
 
 // Shared workspace settings — singleton row keyed by id = 'workspace'.

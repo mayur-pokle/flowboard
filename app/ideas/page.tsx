@@ -270,7 +270,9 @@ export default function IdeasPage() {
   }
 
   return (
-    <div className="flex-1 min-w-0 flex flex-col">
+    // min-h-0 is required so that the inner `flex-1 overflow-auto` actually
+    // scrolls instead of letting the wrapper grow with the content.
+    <div className="flex-1 min-w-0 min-h-0 flex flex-col">
       <PageHeader
         title="Content Opportunity Ideas"
         subtitle={
@@ -323,7 +325,7 @@ export default function IdeasPage() {
         </div>
       ) : null}
 
-      <div className="px-8 py-4 border-b border-ink-200 bg-white flex items-center gap-3 flex-wrap">
+      <div className="px-8 py-4 border-b border-ink-200 bg-white flex items-center gap-3 flex-wrap shrink-0">
         <div className="relative flex-1 min-w-[240px] max-w-md">
           <Search className="size-4 absolute left-3 top-1/2 -translate-y-1/2 text-ink-400" />
           <input
@@ -455,7 +457,7 @@ function PageHeader({
   right?: React.ReactNode;
 }) {
   return (
-    <div className="px-8 h-16 flex items-center justify-between border-b border-ink-200 bg-white">
+    <div className="px-8 h-16 flex items-center justify-between border-b border-ink-200 bg-white shrink-0">
       <div>
         <h1 className="text-base font-semibold text-ink-900 leading-tight">
           {title}

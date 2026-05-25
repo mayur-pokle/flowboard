@@ -23,8 +23,11 @@ export function Sidebar() {
   const email = session?.user?.email || "";
 
   return (
-    <aside className="w-60 shrink-0 border-r border-ink-200 bg-white flex flex-col">
-      <div className="px-4 h-16 flex items-center border-b border-ink-200">
+    // h-full so the sidebar fills the parent (AuthShell h-screen). Logo
+    // header and footer stay pinned; nav scrolls internally if it ever
+    // grows beyond the available height.
+    <aside className="w-60 shrink-0 border-r border-ink-200 bg-white flex flex-col h-full">
+      <div className="px-4 h-16 flex items-center border-b border-ink-200 shrink-0">
         <Link
           href="/board"
           aria-label="Flowboard"
@@ -38,7 +41,7 @@ export function Sidebar() {
         </Link>
       </div>
 
-      <nav className="px-2 py-3 flex-1">
+      <nav className="px-2 py-3 flex-1 overflow-y-auto scrollbar-thin">
         {items.map((item) => {
           const active =
             pathname === item.href ||
@@ -73,7 +76,7 @@ export function Sidebar() {
         })}
       </nav>
 
-      <div className="border-t border-ink-200 p-3">
+      <div className="border-t border-ink-200 p-3 shrink-0">
         {email ? (
           <div className="flex items-center gap-2">
             <div className="size-7 rounded-full bg-brand-600 text-white grid place-items-center text-[11px] font-semibold shrink-0">

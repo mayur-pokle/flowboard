@@ -308,8 +308,8 @@ export default function ContentLibraryPage() {
     : items;
 
   return (
-    <div className="flex-1 min-w-0 flex flex-col">
-      <div className="px-8 h-16 flex items-center justify-between border-b border-ink-200 bg-white">
+    <div className="flex-1 min-w-0 min-h-0 flex flex-col">
+      <div className="px-8 h-16 flex items-center justify-between border-b border-ink-200 bg-white shrink-0">
         <div>
           <h1 className="text-base font-semibold text-ink-900 leading-tight flex items-center gap-2">
             <Library className="size-4 text-ink-500" />

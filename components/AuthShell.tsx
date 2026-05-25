@@ -73,9 +73,15 @@ export function AuthShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="flex min-h-screen">
+    // h-screen (not min-h-screen) so the inner flex-1 overflow-auto
+    // containers actually constrain — otherwise the wrapper grows with
+    // content and the whole window scrolls, taking the sidebar + page
+    // headers + filter strips out of view.
+    <div className="flex h-screen overflow-hidden">
       <Sidebar />
-      <main className="flex-1 min-w-0 flex flex-col">{children}</main>
+      <main className="flex-1 min-w-0 flex flex-col overflow-hidden">
+        {children}
+      </main>
     </div>
   );
 }

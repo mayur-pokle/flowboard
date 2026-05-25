@@ -31,6 +31,8 @@ function rowToExisting(
       ? r.publishedDate.toISOString()
       : undefined,
     notes: r.notes ?? "",
+    sourceSitemapUrl: r.sourceSitemapUrl ?? undefined,
+    enrichedAt: r.enrichedAt ? r.enrichedAt.toISOString() : undefined,
     createdAt: r.createdAt.toISOString()
   };
 }

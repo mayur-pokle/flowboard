@@ -204,6 +204,13 @@ export const existingContent = pgTable("existingContent", {
   // Cached embedding (jsonb-encoded array of numbers) so we don't recompute
   // for every generation. Null until first embedding pass.
   embedding: jsonb("embedding"),
+  // When this row was imported via sitemap, the URL of that sitemap.
+  // Lets the Refresh button know what to re-fetch and what to diff against.
+  sourceSitemapUrl: text("sourceSitemapUrl"),
+  // Set when the title has been fetched live from the page (vs. derived
+  // from the URL path on first import). Null = title is auto-derived and
+  // can be improved by the "Enrich titles" button.
+  enrichedAt: timestamp("enrichedAt", { mode: "date" }),
   createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull()
 });
 

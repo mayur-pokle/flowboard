@@ -83,7 +83,22 @@ interface Store extends AppState {
     imported: number;
     skipped: number;
     sampled: number;
+    truncated?: boolean;
+    sitemapUrl?: string;
   }>;
+  refreshSitemap: (sitemapUrl: string) => Promise<{
+    added: number;
+    removed: Array<{ id: string; url: string; title: string }>;
+    sampled: number;
+    truncated?: boolean;
+    sitemapUrl?: string;
+  }>;
+  enrichTitles: (ids: string[]) => Promise<{
+    processed: number;
+    enriched: number;
+    failed: number;
+  }>;
+  bulkDeleteExistingContent: (ids: string[]) => Promise<void>;
 
   // Bookkeeping
   setLastGeneratedAt: (iso: string) => Promise<void>;
@@ -642,16 +657,70 @@ export const useStore = create<Store>()((set, get) => ({
       imported: number;
       skipped: number;
       sampled: number;
+      truncated?: boolean;
+      sitemapUrl?: string;
     }>("/api/existing-content/import-sitemap", {
       method: "POST",
       json: { sitemapUrl }
     });
-    // Refetch the library to include freshly imported rows.
     const { existingContent: rows } = await api<{
       existingContent: ExistingContent[];
     }>("/api/existing-content");
     set({ existingContent: rows });
     return result;
+  },
+
+  refreshSitemap: async (sitemapUrl) => {
+    const result = await api<{
+      added: number;
+      removed: Array<{ id: string; url: string; title: string }>;
+      sampled: number;
+      truncated?: boolean;
+      sitemapUrl?: string;
+    }>("/api/existing-content/refresh-sitemap", {
+      method: "POST",
+      json: { sitemapUrl }
+    });
+    const { existingContent: rows } = await api<{
+      existingContent: ExistingContent[];
+    }>("/api/existing-content");
+    set({ existingContent: rows });
+    return result;
+  },
+
+  enrichTitles: async (ids) => {
+    if (ids.length === 0)
+      return { processed: 0, enriched: 0, failed: 0 };
+    const result = await api<{
+      processed: number;
+      enriched: number;
+      failed: number;
+    }>("/api/existing-content/enrich-titles", {
+      method: "POST",
+      json: { ids }
+    });
+    // Refetch just the affected rows is expensive — easier to refetch all.
+    const { existingContent: rows } = await api<{
+      existingContent: ExistingContent[];
+    }>("/api/existing-content");
+    set({ existingContent: rows });
+    return result;
+  },
+
+  bulkDeleteExistingContent: async (ids) => {
+    if (ids.length === 0) return;
+    const prev = get().existingContent;
+    const toDelete = new Set(ids);
+    set({ existingContent: prev.filter((c) => !toDelete.has(c.id)) });
+    try {
+      await api("/api/existing-content/bulk-delete", {
+        method: "POST",
+        json: { ids }
+      });
+    } catch (err) {
+      set({ existingContent: prev });
+      throw err;
+    }
   },
 
   setLastGeneratedAt: async (iso) => {

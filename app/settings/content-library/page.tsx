@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   Plus,
   Trash2,
@@ -9,7 +9,12 @@ import {
   ExternalLink,
   Upload,
   Download,
-  Search
+  Search,
+  RefreshCw,
+  Sparkles,
+  AlertTriangle,
+  X,
+  Check
 } from "lucide-react";
 import { useStore, useHasHydrated } from "@/lib/store";
 import { Button } from "@/components/ui/Button";
@@ -24,6 +29,9 @@ const INTENTS: SearchIntentType[] = [
   "navigational"
 ];
 
+// Process this many rows per /enrich-titles call.
+const ENRICH_CHUNK = 10;
+
 export default function ContentLibraryPage() {
   const hydrated = useHasHydrated();
   const items = useStore((s) => s.existingContent);
@@ -31,6 +39,9 @@ export default function ContentLibraryPage() {
   const updateExistingContent = useStore((s) => s.updateExistingContent);
   const removeExistingContent = useStore((s) => s.removeExistingContent);
   const importSitemap = useStore((s) => s.importSitemap);
+  const refreshSitemap = useStore((s) => s.refreshSitemap);
+  const enrichTitles = useStore((s) => s.enrichTitles);
+  const bulkDelete = useStore((s) => s.bulkDeleteExistingContent);
 
   const [newUrl, setNewUrl] = useState("");
   const [newTitle, setNewTitle] = useState("");
@@ -39,9 +50,47 @@ export default function ContentLibraryPage() {
 
   const [sitemapUrl, setSitemapUrl] = useState("");
   const [importing, setImporting] = useState(false);
+  const [refreshing, setRefreshing] = useState<string | null>(null);
+
+  const [enriching, setEnriching] = useState(false);
+  const [enrichProgress, setEnrichProgress] = useState({ done: 0, total: 0 });
+
+  const [removedModal, setRemovedModal] = useState<{
+    sitemapUrl: string;
+    removed: Array<{ id: string; url: string; title: string }>;
+  } | null>(null);
 
   const [query, setQuery] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Derive list of unique saved sitemaps + per-sitemap counts.
+  const savedSitemaps = useMemo(() => {
+    const map = new Map<
+      string,
+      { url: string; total: number; unenriched: number }
+    >();
+    for (const c of items) {
+      if (!c.sourceSitemapUrl) continue;
+      const cur =
+        map.get(c.sourceSitemapUrl) || {
+          url: c.sourceSitemapUrl,
+          total: 0,
+          unenriched: 0
+        };
+      cur.total++;
+      if (!c.enrichedAt) cur.unenriched++;
+      map.set(c.sourceSitemapUrl, cur);
+    }
+    return Array.from(map.values()).sort((a, b) => b.total - a.total);
+  }, [items]);
+
+  const unenrichedIds = useMemo(
+    () =>
+      items
+        .filter((c) => !c.enrichedAt && c.sourceSitemapUrl)
+        .map((c) => c.id),
+    [items]
+  );
 
   async function handleAdd() {
     const url = newUrl.trim();
@@ -77,8 +126,11 @@ export default function ContentLibraryPage() {
     setImporting(true);
     try {
       const res = await importSitemap(url);
+      const more = res.truncated ? " (capped at 5000 — re-run for more)" : "";
       toast(
-        `Imported ${res.imported} URLs (skipped ${res.skipped}, sampled ${res.sampled})`,
+        `Imported ${res.imported} URLs from sitemap${
+          res.skipped ? `, skipped ${res.skipped} duplicates` : ""
+        }${more}`,
         "success"
       );
       setSitemapUrl("");
@@ -89,16 +141,88 @@ export default function ContentLibraryPage() {
     }
   }
 
+  async function handleRefresh(url: string) {
+    setRefreshing(url);
+    try {
+      const res = await refreshSitemap(url);
+      if (res.removed.length > 0) {
+        setRemovedModal({ sitemapUrl: url, removed: res.removed });
+      }
+      toast(
+        res.added > 0
+          ? `Refreshed: ${res.added} new URL${res.added === 1 ? "" : "s"} added${
+              res.removed.length > 0
+                ? `, ${res.removed.length} no longer in sitemap`
+                : ""
+            }`
+          : res.removed.length > 0
+          ? `No new URLs — but ${res.removed.length} are no longer in the sitemap`
+          : "Already up to date — no new URLs",
+        res.added > 0 || res.removed.length > 0 ? "success" : "info"
+      );
+    } catch (err) {
+      toast((err as Error).message, "error");
+    } finally {
+      setRefreshing(null);
+    }
+  }
+
+  async function handleEnrichAll() {
+    if (unenrichedIds.length === 0) {
+      toast("Nothing to enrich — all titles already fetched", "info");
+      return;
+    }
+    setEnriching(true);
+    setEnrichProgress({ done: 0, total: unenrichedIds.length });
+    try {
+      let done = 0;
+      let totalEnriched = 0;
+      let totalFailed = 0;
+      for (let i = 0; i < unenrichedIds.length; i += ENRICH_CHUNK) {
+        const slice = unenrichedIds.slice(i, i + ENRICH_CHUNK);
+        try {
+          const res = await enrichTitles(slice);
+          totalEnriched += res.enriched;
+          totalFailed += res.failed;
+        } catch (err) {
+          // Continue on per-chunk error; surface at end.
+          console.error("[enrich chunk failed]", err);
+          totalFailed += slice.length;
+        }
+        done += slice.length;
+        setEnrichProgress({ done, total: unenrichedIds.length });
+      }
+      toast(
+        `Enriched ${totalEnriched} titles${
+          totalFailed > 0 ? `, ${totalFailed} failed` : ""
+        }`,
+        totalEnriched > 0 ? "success" : "info"
+      );
+    } finally {
+      setEnriching(false);
+    }
+  }
+
+  async function handleConfirmDeleteRemoved() {
+    if (!removedModal) return;
+    const ids = removedModal.removed.map((r) => r.id);
+    try {
+      await bulkDelete(ids);
+      toast(`Deleted ${ids.length} removed URLs`, "success");
+      setRemovedModal(null);
+    } catch (err) {
+      toast((err as Error).message, "error");
+    }
+  }
+
   async function handleCsvUpload(file: File) {
     try {
       const text = await file.text();
-      // Very small CSV parser — handles quoted values with commas.
       const rows = parseCsv(text);
       if (rows.length === 0) {
         toast("CSV is empty", "error");
         return;
       }
-      // Expect headers: url, title, targetKeyword (optional), intent (optional)
       const header = rows[0].map((h) => h.trim().toLowerCase());
       const idxUrl = header.indexOf("url");
       const idxTitle = header.indexOf("title");
@@ -142,7 +266,6 @@ export default function ContentLibraryPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Import failed");
       toast(`Imported ${data.inserted} rows`, "success");
-      // Refetch by hydrating one slice.
       window.location.reload();
     } catch (err) {
       toast((err as Error).message, "error");
@@ -193,16 +316,30 @@ export default function ContentLibraryPage() {
             Content library
           </h1>
           <p className="text-xs text-ink-500 leading-tight">
-            Everything you&apos;ve already published. Fed into every generation
-            so the AI doesn&apos;t propose ideas that cannibalize your existing
-            pages.
+            Everything you&apos;ve already published. Fed into every
+            generation so the AI doesn&apos;t propose ideas that cannibalize
+            your existing pages.
           </p>
         </div>
-        <Badge tone="neutral">{items.length} entries</Badge>
+        <div className="flex items-center gap-2">
+          {unenrichedIds.length > 0 ? (
+            <Button
+              variant="secondary"
+              onClick={handleEnrichAll}
+              loading={enriching}
+            >
+              <Sparkles className="size-4" />
+              {enriching
+                ? `Enriching ${enrichProgress.done}/${enrichProgress.total}…`
+                : `Enrich titles (${unenrichedIds.length})`}
+            </Button>
+          ) : null}
+          <Badge tone="neutral">{items.length} entries</Badge>
+        </div>
       </div>
 
       <div className="flex-1 overflow-auto scrollbar-thin px-8 py-6 max-w-5xl w-full">
-        {/* Sitemap import */}
+        {/* Sitemap section */}
         <section className="card p-4 mb-4">
           <div className="text-[11px] font-semibold uppercase tracking-wider text-ink-500 mb-2 flex items-center gap-1">
             <Globe className="size-3.5" />
@@ -224,16 +361,54 @@ export default function ContentLibraryPage() {
               loading={importing}
             >
               <Upload className="size-4" />
-              Import
+              Import all
             </Button>
           </div>
           <p className="text-[11px] text-ink-500 mt-2">
-            We&apos;ll fetch up to 30 URLs per import and pull their{" "}
-            <code>&lt;title&gt;</code>. Big sites: run twice or use CSV.
+            Imports every URL from the sitemap in one shot (up to 5000).
+            Titles are auto-derived from the URL path — click{" "}
+            <strong>Enrich titles</strong> in the header to fetch the real
+            <code>&lt;title&gt;</code> tags from each page (chunks of 10).
           </p>
+
+          {/* Saved sitemaps */}
+          {savedSitemaps.length > 0 ? (
+            <div className="mt-3 border-t border-ink-100 pt-3 space-y-1.5">
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-ink-500 mb-1">
+                Saved sitemaps
+              </div>
+              {savedSitemaps.map((sm) => (
+                <div
+                  key={sm.url}
+                  className="flex items-center gap-2 text-sm py-1 px-2 rounded hover:bg-ink-50"
+                >
+                  <Globe className="size-3.5 text-ink-400 shrink-0" />
+                  <span className="font-mono text-xs truncate flex-1">
+                    {sm.url}
+                  </span>
+                  <span className="text-[11px] text-ink-500 whitespace-nowrap">
+                    {sm.total} URLs
+                    {sm.unenriched > 0
+                      ? ` · ${sm.unenriched} need titles`
+                      : ""}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    onClick={() => handleRefresh(sm.url)}
+                    loading={refreshing === sm.url}
+                    className="!py-1 !px-2"
+                    title="Re-fetch this sitemap and add new URLs"
+                  >
+                    <RefreshCw className="size-3.5" />
+                    Refresh
+                  </Button>
+                </div>
+              ))}
+            </div>
+          ) : null}
         </section>
 
-        {/* CSV import / export */}
+        {/* CSV */}
         <section className="card p-4 mb-4">
           <div className="text-[11px] font-semibold uppercase tracking-wider text-ink-500 mb-2">
             CSV
@@ -344,6 +519,15 @@ export default function ContentLibraryPage() {
           </div>
         )}
       </div>
+
+      {/* Removed-URLs confirm modal */}
+      {removedModal ? (
+        <RemovedUrlsModal
+          modal={removedModal}
+          onClose={() => setRemovedModal(null)}
+          onConfirm={handleConfirmDeleteRemoved}
+        />
+      ) : null}
     </div>
   );
 }
@@ -357,6 +541,7 @@ function LibraryRow({
   onUpdate: (patch: Partial<ExistingContent>) => void;
   onRemove: () => void;
 }) {
+  const isAuto = !row.enrichedAt && row.sourceSitemapUrl;
   return (
     <div className="px-4 py-3 grid grid-cols-[2fr_2fr_1.5fr_140px_auto] gap-2 items-center">
       <div className="flex items-center gap-2 min-w-0">
@@ -375,11 +560,21 @@ function LibraryRow({
           <ExternalLink className="size-3.5" />
         </a>
       </div>
-      <input
-        className="input !py-1.5 text-sm"
-        value={row.title}
-        onChange={(e) => onUpdate({ title: e.target.value })}
-      />
+      <div className="flex items-center gap-1.5">
+        <input
+          className="input !py-1.5 text-sm"
+          value={row.title}
+          onChange={(e) => onUpdate({ title: e.target.value })}
+        />
+        {isAuto ? (
+          <span
+            className="text-[10px] text-amber-700 font-medium shrink-0"
+            title="Auto-derived from URL path — click Enrich titles to fetch the real page title"
+          >
+            auto
+          </span>
+        ) : null}
+      </div>
       <input
         className="input !py-1.5 text-sm font-mono"
         value={row.targetKeyword}
@@ -407,6 +602,82 @@ function LibraryRow({
       >
         <Trash2 className="size-4" />
       </button>
+    </div>
+  );
+}
+
+function RemovedUrlsModal({
+  modal,
+  onClose,
+  onConfirm
+}: {
+  modal: {
+    sitemapUrl: string;
+    removed: Array<{ id: string; url: string; title: string }>;
+  };
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-ink-900/40 backdrop-blur-sm grid place-items-center p-6"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-xl shadow-cardHover w-full max-w-2xl p-6 max-h-[80vh] flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-3 mb-3">
+          <div className="flex items-start gap-3">
+            <div className="size-9 rounded-md bg-amber-50 text-amber-700 grid place-items-center shrink-0">
+              <AlertTriangle className="size-5" />
+            </div>
+            <div>
+              <h2 className="text-sm font-semibold text-ink-900">
+                {modal.removed.length} URL
+                {modal.removed.length === 1 ? "" : "s"} no longer in this
+                sitemap
+              </h2>
+              <p className="text-xs text-ink-500 mt-0.5 max-w-md">
+                These URLs were imported from this sitemap previously but
+                aren&apos;t in it anymore. You probably unpublished or moved
+                them. Delete from your library to keep cannibalization checks
+                accurate.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1 text-ink-400 hover:text-ink-700 rounded"
+            aria-label="Close"
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-auto scrollbar-thin border border-ink-200 rounded-md divide-y divide-ink-100">
+          {modal.removed.map((r) => (
+            <div key={r.id} className="px-3 py-2 text-sm">
+              <div className="font-medium text-ink-800 truncate">
+                {r.title}
+              </div>
+              <div className="text-[11px] text-ink-500 font-mono truncate">
+                {r.url}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="flex justify-end gap-2 mt-4">
+          <Button variant="secondary" onClick={onClose}>
+            Keep them
+          </Button>
+          <Button variant="primary" onClick={onConfirm}>
+            <Check className="size-4" />
+            Delete {modal.removed.length}
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }

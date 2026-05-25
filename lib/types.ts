@@ -112,6 +112,10 @@ export interface ExistingContent {
   intent: SearchIntentType | "";
   publishedDate?: string;
   notes: string;
+  // Sitemap this row was imported from (if any). Drives the Refresh button.
+  sourceSitemapUrl?: string;
+  // Set once the title has been fetched live (vs. derived from URL path).
+  enrichedAt?: string;
   createdAt: string;
 }
 

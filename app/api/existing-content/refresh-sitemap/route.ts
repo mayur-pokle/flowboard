@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { existingContent } from "@/db/schema";
 import { withAuth, badRequest, serverError } from "@/lib/api";
@@ -13,17 +14,16 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 // ───────────────────────────────────────────────────────────────────
-// Fast sitemap import — no per-page HTML fetch.
+// Refresh a previously-imported sitemap.
 //
-// Strategy:
-// 1. Fetch sitemap.xml (and follow sitemap-index up to 20 children).
-// 2. Extract ALL <loc> URLs (capped at 5000 for serverless sanity).
-// 3. Derive a title from the URL path (e.g. /blog/best-roi-calculators
-//    → "Best ROI Calculators").
-// 4. Bulk insert with sourceSitemapUrl set and enrichedAt = null.
+// Body: { sitemapUrl: string }
 //
-// Real page titles can be fetched later via the "Enrich titles" button,
-// which calls /api/existing-content/enrich-titles in client-side chunks.
+// 1. Fetch sitemap again.
+// 2. Pull all DB rows where sourceSitemapUrl === provided URL.
+// 3. Compute deltas:
+//    - added = in sitemap, not in DB → insert
+//    - removed = in DB (with this sourceSitemapUrl), not in sitemap → return for confirmation
+// 4. Does NOT auto-delete removed rows — client confirms via separate DELETE.
 // ───────────────────────────────────────────────────────────────────
 
 export const POST = withAuth(async (_user, req) => {
@@ -42,15 +42,25 @@ export const POST = withAuth(async (_user, req) => {
       );
     }
 
-    // Skip URLs we already have (case-insensitive).
-    const existing = await db
+    // Rows that were imported from this specific sitemap.
+    const tagged = await db
+      .select()
+      .from(existingContent)
+      .where(eq(existingContent.sourceSitemapUrl, sitemapUrl));
+    const taggedUrls = new Set(tagged.map((r) => r.url.toLowerCase()));
+
+    // ALL existing URLs (to skip cross-source duplicates).
+    const all = await db
       .select({ url: existingContent.url })
       .from(existingContent);
-    const seen = new Set(existing.map((e) => e.url.toLowerCase()));
+    const allUrls = new Set(all.map((r) => r.url.toLowerCase()));
 
-    const rows = urls
-      .filter((u) => !seen.has(u.toLowerCase()))
-      .map((url) => ({
+    // New URLs in sitemap that we don't have yet (from any source).
+    const sitemapSet = new Set(urls.map((u) => u.toLowerCase()));
+    const newUrls = urls.filter((u) => !allUrls.has(u.toLowerCase()));
+
+    if (newUrls.length > 0) {
+      const rows = newUrls.map((url) => ({
         id: uid("ec"),
         url,
         title: titleFromUrl(url),
@@ -61,17 +71,23 @@ export const POST = withAuth(async (_user, req) => {
         sourceSitemapUrl: sitemapUrl,
         enrichedAt: null
       }));
-
-    if (rows.length > 0) {
-      // Chunk inserts so very large sites don't hit query size limits.
       const CHUNK = 500;
       for (let i = 0; i < rows.length; i += CHUNK) {
         await db.insert(existingContent).values(rows.slice(i, i + CHUNK));
       }
     }
+
+    // Removed: rows tagged with this sitemap that aren't in the latest
+    // sitemap fetch. We DON'T delete automatically — client confirms.
+    const removed = tagged
+      .filter((r) => !sitemapSet.has(r.url.toLowerCase()))
+      .map((r) => ({ id: r.id, url: r.url, title: r.title }));
+
+    void taggedUrls; // currently unused; kept for symmetry
+
     return NextResponse.json({
-      imported: rows.length,
-      skipped: urls.length - rows.length,
+      added: newUrls.length,
+      removed,
       sampled: urls.length,
       truncated,
       sitemapUrl

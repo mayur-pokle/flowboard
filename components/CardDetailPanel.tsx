@@ -13,7 +13,9 @@ import {
   CheckCircle2,
   History,
   ChevronDown,
-  ChevronRight
+  ChevronRight,
+  Pencil,
+  MessageSquare
 } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { Button } from "@/components/ui/Button";
@@ -21,6 +23,8 @@ import { PriorityBadge, TypeBadge, Badge } from "@/components/ui/Badge";
 import { toast } from "@/components/Toast";
 import { copyToClipboard, formatDate } from "@/lib/utils";
 import type { GeneratedContent, Priority, Status, Task } from "@/lib/types";
+import { ContentEditor } from "@/components/ContentEditor";
+import { CommentsSection } from "@/components/CommentsSection";
 
 const STATUS_LABELS: Record<Status, string> = {
   todo: "To Do",
@@ -42,6 +46,10 @@ export function CardDetailPanel({ task }: { task: Task }) {
 
   const [tagInput, setTagInput] = useState("");
   const [autoGenAttempted, setAutoGenAttempted] = useState(false);
+  const [editingContent, setEditingContent] = useState(false);
+  const commentCount = useStore(
+    (s) => (s.commentsByTaskId[task.id] || []).length
+  );
 
   // Auto-generate content the first time a task hits the board (if no content yet).
   useEffect(() => {
@@ -235,96 +243,139 @@ export function CardDetailPanel({ task }: { task: Task }) {
           />
         </Section>
 
-        {/* SEO Details */}
+        {/* Generated content */}
         {task.content ? (
-          <>
-            <Section title="SEO details">
-              <Field label="URL slug">
-                <code className="text-xs bg-ink-100 px-2 py-1 rounded font-mono">
-                  /blog/{task.content.urlSlug}
-                </code>
-              </Field>
-              <Field label="SEO title">{task.content.metaTitle}</Field>
-              <Field label="Meta description">
-                {task.content.metaDescription}
-              </Field>
-              <Field label="Target keyword">
-                <span className="font-mono text-xs">
-                  {task.topic.targetKeyword}
-                </span>
-              </Field>
-              <CollapsibleField label="Schema markup (JSON-LD)" defaultOpen={false}>
-                <pre className="bg-ink-900 text-ink-100 p-3 rounded text-[11px] overflow-auto max-h-64 scrollbar-thin font-mono leading-relaxed">
-                  {task.content.schemaJsonLd}
-                </pre>
-              </CollapsibleField>
-            </Section>
+          <Section
+            title={editingContent ? "Editing content" : "Generated content"}
+            right={
+              editingContent ? null : (
+                <Button
+                  variant="secondary"
+                  onClick={() => setEditingContent(true)}
+                  className="!py-1 !px-2 text-xs"
+                >
+                  <Pencil className="size-3.5" />
+                  Edit
+                </Button>
+              )
+            }
+          >
+            {editingContent ? (
+              <ContentEditor
+                content={task.content}
+                onSave={async (next) => {
+                  await setTaskContent(task.id, next);
+                  setEditingContent(false);
+                }}
+                onCancel={() => setEditingContent(false)}
+              />
+            ) : (
+              <>
+                <div className="text-xs text-ink-500 mb-3">
+                  {task.content.wordCount.toLocaleString()} words ·{" "}
+                  {task.content.faqs.length} FAQs ·{" "}
+                  {task.content.internalLinks.length} internal-link suggestions
+                </div>
+                <div className="grid gap-2 mb-3">
+                  <ReadField label="URL slug">
+                    <code className="text-xs bg-ink-100 px-2 py-1 rounded font-mono">
+                      /blog/{task.content.urlSlug}
+                    </code>
+                  </ReadField>
+                  <ReadField label="SEO title">
+                    {task.content.metaTitle}
+                  </ReadField>
+                  <ReadField label="Meta description">
+                    {task.content.metaDescription}
+                  </ReadField>
+                </div>
+                <div className="prose-body card p-5 max-h-[480px] overflow-auto scrollbar-thin">
+                  <RenderMarkdown text={task.content.body} />
+                </div>
 
-            {/* Generated content */}
-            <Section title="Generated content">
-              <div className="text-xs text-ink-500 mb-3">
-                {task.content.wordCount.toLocaleString()} words ·{" "}
-                {task.content.faqs.length} FAQs ·{" "}
-                {task.content.internalLinks.length} internal-link suggestions
-              </div>
-              <div className="prose-body card p-5 max-h-[480px] overflow-auto scrollbar-thin">
-                <RenderMarkdown text={task.content.body} />
-              </div>
+                {task.content.ctaPlacements.length > 0 && (
+                  <CollapsibleField label="CTA placements">
+                    <ul className="text-sm text-ink-700 space-y-1.5 list-disc pl-5">
+                      {task.content.ctaPlacements.map((c, i) => (
+                        <li key={i}>{c}</li>
+                      ))}
+                    </ul>
+                  </CollapsibleField>
+                )}
 
-              {task.content.ctaPlacements.length > 0 && (
-                <CollapsibleField label="CTA placements">
-                  <ul className="text-sm text-ink-700 space-y-1.5 list-disc pl-5">
-                    {task.content.ctaPlacements.map((c, i) => (
-                      <li key={i}>{c}</li>
-                    ))}
-                  </ul>
-                </CollapsibleField>
-              )}
+                {task.content.internalLinks.length > 0 && (
+                  <CollapsibleField label="Internal-link suggestions">
+                    <ul className="text-sm text-ink-700 space-y-1.5 list-disc pl-5">
+                      {task.content.internalLinks.map((l, i) => (
+                        <li key={i}>{l}</li>
+                      ))}
+                    </ul>
+                  </CollapsibleField>
+                )}
 
-              {task.content.internalLinks.length > 0 && (
-                <CollapsibleField label="Internal-link suggestions">
-                  <ul className="text-sm text-ink-700 space-y-1.5 list-disc pl-5">
-                    {task.content.internalLinks.map((l, i) => (
-                      <li key={i}>{l}</li>
-                    ))}
-                  </ul>
-                </CollapsibleField>
-              )}
-
-              {task.content.faqs.length > 0 && (
-                <CollapsibleField label={`FAQs (${task.content.faqs.length})`}>
-                  <div className="space-y-3">
-                    {task.content.faqs.map((f, i) => (
-                      <div key={i}>
-                        <div className="text-sm font-semibold text-ink-900">
-                          {f.q}
+                {task.content.faqs.length > 0 && (
+                  <CollapsibleField
+                    label={`FAQs (${task.content.faqs.length})`}
+                  >
+                    <div className="space-y-3">
+                      {task.content.faqs.map((f, i) => (
+                        <div key={i}>
+                          <div className="text-sm font-semibold text-ink-900">
+                            {f.q}
+                          </div>
+                          <div className="text-sm text-ink-700 mt-0.5">
+                            {f.a}
+                          </div>
                         </div>
-                        <div className="text-sm text-ink-700 mt-0.5">{f.a}</div>
-                      </div>
-                    ))}
-                  </div>
-                </CollapsibleField>
-              )}
+                      ))}
+                    </div>
+                  </CollapsibleField>
+                )}
 
-              {task.contentVersions && task.contentVersions.length > 0 ? (
                 <CollapsibleField
-                  label={`Previous versions (${task.contentVersions.length})`}
-                  icon={History}
+                  label="Schema markup (JSON-LD)"
                   defaultOpen={false}
                 >
-                  <ul className="text-xs text-ink-500 space-y-1">
-                    {task.contentVersions.map((v, i) => (
-                      <li key={i}>
-                        v{task.contentVersions!.length - i} ·{" "}
-                        {v.wordCount.toLocaleString()} words · {v.metaTitle}
-                      </li>
-                    ))}
-                  </ul>
+                  <pre className="bg-ink-900 text-ink-100 p-3 rounded text-[11px] overflow-auto max-h-64 scrollbar-thin font-mono leading-relaxed">
+                    {task.content.schemaJsonLd}
+                  </pre>
                 </CollapsibleField>
-              ) : null}
-            </Section>
-          </>
+
+                {task.contentVersions && task.contentVersions.length > 0 ? (
+                  <CollapsibleField
+                    label={`Previous versions (${task.contentVersions.length})`}
+                    icon={History}
+                    defaultOpen={false}
+                  >
+                    <ul className="text-xs text-ink-500 space-y-1">
+                      {task.contentVersions.map((v, i) => (
+                        <li key={i}>
+                          v{task.contentVersions!.length - i} ·{" "}
+                          {v.wordCount.toLocaleString()} words · {v.metaTitle}
+                        </li>
+                      ))}
+                    </ul>
+                  </CollapsibleField>
+                ) : null}
+              </>
+            )}
+          </Section>
         ) : null}
+
+        {/* Comments / remarks */}
+        <Section
+          title="Comments"
+          right={
+            commentCount > 0 ? (
+              <Badge tone="neutral" className="gap-1">
+                <MessageSquare className="size-3" />
+                {commentCount}
+              </Badge>
+            ) : null
+          }
+        >
+          <CommentsSection taskId={task.id} />
+        </Section>
       </div>
 
       {/* Actions footer */}
@@ -390,17 +441,37 @@ export function CardDetailPanel({ task }: { task: Task }) {
 
 function Section({
   title,
-  children
+  children,
+  right
 }: {
   title: string;
   children: React.ReactNode;
+  right?: React.ReactNode;
 }) {
   return (
     <div className="px-6 py-5 border-b border-ink-100">
-      <h2 className="text-[11px] font-semibold uppercase tracking-wider text-ink-500 mb-3">
-        {title}
-      </h2>
+      <div className="flex items-center justify-between mb-3 gap-2">
+        <h2 className="text-[11px] font-semibold uppercase tracking-wider text-ink-500">
+          {title}
+        </h2>
+        {right}
+      </div>
       <div className="space-y-3">{children}</div>
+    </div>
+  );
+}
+
+function ReadField({
+  label,
+  children
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="grid grid-cols-[140px_1fr] gap-3 items-start">
+      <div className="text-xs text-ink-500 pt-1.5">{label}</div>
+      <div className="text-sm text-ink-800 min-w-0">{children}</div>
     </div>
   );
 }

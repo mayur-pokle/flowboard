@@ -10,6 +10,7 @@ import type {
   Settings,
   Status,
   Task,
+  TaskComment,
   Topic
 } from "./types";
 import { topicHash, uid } from "./utils";
@@ -100,6 +101,17 @@ interface Store extends AppState {
   }>;
   bulkDeleteExistingContent: (ids: string[]) => Promise<void>;
 
+  // Task comments — loaded on demand per task.
+  commentsByTaskId: Record<string, TaskComment[]>;
+  loadTaskComments: (taskId: string) => Promise<void>;
+  addTaskComment: (taskId: string, body: string) => Promise<void>;
+  updateTaskComment: (
+    taskId: string,
+    commentId: string,
+    body: string
+  ) => Promise<void>;
+  deleteTaskComment: (taskId: string, commentId: string) => Promise<void>;
+
   // Bookkeeping
   setLastGeneratedAt: (iso: string) => Promise<void>;
 
@@ -176,6 +188,82 @@ export const useStore = create<Store>()((set, get) => ({
   ...initialState,
   hydrated: false,
   serverConfigured: { openaiKey: false, geminiKey: false, slackWebhook: false },
+  commentsByTaskId: {},
+
+  // ───────── Comments ─────────
+  loadTaskComments: async (taskId) => {
+    try {
+      const { comments } = await api<{ comments: TaskComment[] }>(
+        `/api/tasks/${taskId}/comments`
+      );
+      set((s) => ({
+        commentsByTaskId: { ...s.commentsByTaskId, [taskId]: comments }
+      }));
+    } catch (err) {
+      console.error("[store] loadTaskComments failed:", err);
+    }
+  },
+
+  addTaskComment: async (taskId, body) => {
+    const text = body.trim();
+    if (!text) return;
+    const { comment } = await api<{ comment: TaskComment }>(
+      `/api/tasks/${taskId}/comments`,
+      { method: "POST", json: { body: text } }
+    );
+    set((s) => ({
+      commentsByTaskId: {
+        ...s.commentsByTaskId,
+        [taskId]: [...(s.commentsByTaskId[taskId] || []), comment]
+      }
+    }));
+  },
+
+  updateTaskComment: async (taskId, commentId, body) => {
+    const text = body.trim();
+    if (!text) return;
+    const prev = get().commentsByTaskId[taskId] || [];
+    const now = new Date().toISOString();
+    set((s) => ({
+      commentsByTaskId: {
+        ...s.commentsByTaskId,
+        [taskId]: prev.map((c) =>
+          c.id === commentId ? { ...c, body: text, updatedAt: now } : c
+        )
+      }
+    }));
+    try {
+      await api(`/api/tasks/${taskId}/comments/${commentId}`, {
+        method: "PATCH",
+        json: { body: text }
+      });
+    } catch (err) {
+      set((s) => ({
+        commentsByTaskId: { ...s.commentsByTaskId, [taskId]: prev }
+      }));
+      throw err;
+    }
+  },
+
+  deleteTaskComment: async (taskId, commentId) => {
+    const prev = get().commentsByTaskId[taskId] || [];
+    set((s) => ({
+      commentsByTaskId: {
+        ...s.commentsByTaskId,
+        [taskId]: prev.filter((c) => c.id !== commentId)
+      }
+    }));
+    try {
+      await api(`/api/tasks/${taskId}/comments/${commentId}`, {
+        method: "DELETE"
+      });
+    } catch (err) {
+      set((s) => ({
+        commentsByTaskId: { ...s.commentsByTaskId, [taskId]: prev }
+      }));
+      throw err;
+    }
+  },
 
   hydrate: async () => {
     try {

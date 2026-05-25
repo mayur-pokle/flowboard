@@ -214,6 +214,20 @@ export const existingContent = pgTable("existingContent", {
   createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull()
 });
 
+// ───────────────────────── Task comments ─────────────────────────
+// Per-task discussion thread. Used by the content team to leave remarks,
+// review notes, blockers, etc. Comments are workspace-shared (no DMs).
+
+export const taskComments = pgTable("taskComments", {
+  id: text("id").primaryKey(),
+  taskId: text("taskId").notNull(),
+  body: text("body").notNull(),
+  authorEmail: text("authorEmail").default("").notNull(),
+  authorName: text("authorName").default("").notNull(),
+  createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt", { mode: "date" }).defaultNow().notNull()
+});
+
 // Flag to know if the workspace has ever been seeded from a browser
 // snapshot, so we don't re-migrate on every sign-in.
 export const meta = pgTable("meta", {
@@ -228,3 +242,4 @@ export type DbSettings = typeof settings.$inferSelect;
 export type DbCompetitor = typeof competitors.$inferSelect;
 export type DbKeyword = typeof keywords.$inferSelect;
 export type DbExistingContent = typeof existingContent.$inferSelect;
+export type DbTaskComment = typeof taskComments.$inferSelect;

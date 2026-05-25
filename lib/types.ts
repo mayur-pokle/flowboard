@@ -103,6 +103,17 @@ export interface Keyword {
   updatedAt: string;
 }
 
+// ── Task comments ──
+export interface TaskComment {
+  id: string;
+  taskId: string;
+  body: string;
+  authorEmail: string;
+  authorName: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // ── Existing content library ──
 export interface ExistingContent {
   id: string;

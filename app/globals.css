@@ -89,3 +89,30 @@
 .prose-body strong {
   @apply font-semibold text-ink-900;
 }
+.prose-body h4 {
+  @apply text-[15px] font-semibold mt-3 mb-1.5 text-ink-900;
+}
+.prose-body h5 {
+  @apply text-sm font-semibold mt-3 mb-1 text-ink-900 uppercase tracking-wide;
+}
+.prose-body h6 {
+  @apply text-xs font-semibold mt-3 mb-1 text-ink-700 uppercase tracking-wider;
+}
+.prose-body em {
+  @apply italic text-ink-700;
+}
+.prose-body blockquote {
+  @apply border-l-4 border-brand-300 bg-brand-50/40 pl-4 pr-3 py-2 my-3 text-ink-700 italic rounded-r;
+}
+.prose-body blockquote p {
+  @apply mb-1;
+}
+.prose-body pre {
+  @apply bg-ink-900 text-ink-100 p-3 rounded my-3 overflow-auto text-[12px] leading-relaxed;
+}
+.prose-body pre code {
+  @apply bg-transparent p-0 text-inherit font-mono;
+}
+.prose-body a {
+  @apply text-brand-700 underline hover:no-underline;
+}

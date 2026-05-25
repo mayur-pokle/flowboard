@@ -47,8 +47,24 @@ interface Props {
   onCancel: () => void;
 }
 
+// Ensure every array field is present so the editor can't crash on legacy
+// content payloads that were saved before some fields existed.
+function safeContent(c: GeneratedContent): GeneratedContent {
+  return {
+    metaTitle: c.metaTitle ?? "",
+    metaDescription: c.metaDescription ?? "",
+    urlSlug: c.urlSlug ?? "",
+    schemaJsonLd: c.schemaJsonLd ?? "",
+    body: c.body ?? "",
+    internalLinks: c.internalLinks ?? [],
+    ctaPlacements: c.ctaPlacements ?? [],
+    faqs: c.faqs ?? [],
+    wordCount: c.wordCount ?? 0
+  };
+}
+
 export function ContentEditor({ content, onSave, onCancel }: Props) {
-  const [draft, setDraft] = useState<GeneratedContent>(content);
+  const [draft, setDraft] = useState<GeneratedContent>(safeContent(content));
   const [tab, setTab] = useState<"edit" | "preview">("edit");
   const [saving, setSaving] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -56,7 +72,7 @@ export function ContentEditor({ content, onSave, onCancel }: Props) {
   // Keep draft in sync if the underlying content changes externally
   // (e.g. regenerate while editor open). Reset to fresh content.
   useEffect(() => {
-    setDraft(content);
+    setDraft(safeContent(content));
   }, [content]);
 
   function update<K extends keyof GeneratedContent>(

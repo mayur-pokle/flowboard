@@ -272,9 +272,9 @@ export function CardDetailPanel({ task }: { task: Task }) {
             ) : (
               <>
                 <div className="text-xs text-ink-500 mb-3">
-                  {task.content.wordCount.toLocaleString()} words ·{" "}
-                  {task.content.faqs.length} FAQs ·{" "}
-                  {task.content.internalLinks.length} internal-link suggestions
+                  {(task.content.wordCount ?? 0).toLocaleString()} words ·{" "}
+                  {(task.content.faqs ?? []).length} FAQs ·{" "}
+                  {(task.content.internalLinks ?? []).length} internal-link suggestions
                 </div>
                 <div className="grid gap-2 mb-3">
                   <ReadField label="URL slug">
@@ -293,32 +293,32 @@ export function CardDetailPanel({ task }: { task: Task }) {
                   <RenderMarkdown text={task.content.body} />
                 </div>
 
-                {task.content.ctaPlacements.length > 0 && (
+                {(task.content.ctaPlacements ?? []).length > 0 && (
                   <CollapsibleField label="CTA placements">
                     <ul className="text-sm text-ink-700 space-y-1.5 list-disc pl-5">
-                      {task.content.ctaPlacements.map((c, i) => (
+                      {(task.content.ctaPlacements ?? []).map((c, i) => (
                         <li key={i}>{c}</li>
                       ))}
                     </ul>
                   </CollapsibleField>
                 )}
 
-                {task.content.internalLinks.length > 0 && (
+                {(task.content.internalLinks ?? []).length > 0 && (
                   <CollapsibleField label="Internal-link suggestions">
                     <ul className="text-sm text-ink-700 space-y-1.5 list-disc pl-5">
-                      {task.content.internalLinks.map((l, i) => (
+                      {(task.content.internalLinks ?? []).map((l, i) => (
                         <li key={i}>{l}</li>
                       ))}
                     </ul>
                   </CollapsibleField>
                 )}
 
-                {task.content.faqs.length > 0 && (
+                {(task.content.faqs ?? []).length > 0 && (
                   <CollapsibleField
-                    label={`FAQs (${task.content.faqs.length})`}
+                    label={`FAQs (${(task.content.faqs ?? []).length})`}
                   >
                     <div className="space-y-3">
-                      {task.content.faqs.map((f, i) => (
+                      {(task.content.faqs ?? []).map((f, i) => (
                         <div key={i}>
                           <div className="text-sm font-semibold text-ink-900">
                             {f.q}

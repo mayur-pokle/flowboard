@@ -19,12 +19,18 @@ interface Props {
   taskId: string;
 }
 
+// IMPORTANT: a stable empty-array reference. Returning `[]` directly from a
+// Zustand selector creates a new ref on every render, which Zustand sees as
+// "state changed" and schedules another render → React error #185 infinite
+// loop. Always fall back to this same reference.
+const EMPTY_COMMENTS: TaskComment[] = [];
+
 export function CommentsSection({ taskId }: Props) {
   const { data: session } = useSession();
   const currentEmail = session?.user?.email || "";
 
   const comments = useStore(
-    (s) => s.commentsByTaskId[taskId] || []
+    (s) => s.commentsByTaskId[taskId] ?? EMPTY_COMMENTS
   );
   const loadComments = useStore((s) => s.loadTaskComments);
   const addComment = useStore((s) => s.addTaskComment);

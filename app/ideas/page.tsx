@@ -15,7 +15,12 @@ import { useStore, useHasHydrated } from "@/lib/store";
 import { Button } from "@/components/ui/Button";
 import { TopicCard } from "@/components/TopicCard";
 import { toast } from "@/components/Toast";
-import type { ContentType, Priority, Topic } from "@/lib/types";
+import type {
+  ContentType,
+  Priority,
+  SearchIntentType,
+  Topic
+} from "@/lib/types";
 import { formatDate } from "@/lib/utils";
 
 const TYPES: ContentType[] = [
@@ -27,6 +32,12 @@ const TYPES: ContentType[] = [
   "Framework"
 ];
 const PRIORITIES: Priority[] = ["Low", "Medium", "High"];
+const INTENTS: SearchIntentType[] = [
+  "informational",
+  "commercial",
+  "transactional",
+  "navigational"
+];
 
 export default function IdeasPage() {
   const router = useRouter();
@@ -47,6 +58,12 @@ export default function IdeasPage() {
   const [search, setSearch] = useState("");
   const [filterType, setFilterType] = useState<ContentType | "all">("all");
   const [filterPriority, setFilterPriority] = useState<Priority | "all">("all");
+  const [filterIntent, setFilterIntent] = useState<SearchIntentType | "all">(
+    "all"
+  );
+  const [minImpact, setMinImpact] = useState(0);
+  const [minNovelty, setMinNovelty] = useState(0);
+  const [hideOverlap, setHideOverlap] = useState(false);
 
   const filtered = useMemo(() => {
     return topics
@@ -56,6 +73,16 @@ export default function IdeasPage() {
       .filter((t) =>
         filterPriority === "all" ? true : t.priority === filterPriority
       )
+      .filter((t) =>
+        filterIntent === "all" ? true : t.intent === filterIntent
+      )
+      .filter((t) =>
+        minImpact === 0 ? true : (t.impactScore ?? t.priorityScore) >= minImpact
+      )
+      .filter((t) =>
+        minNovelty === 0 ? true : (t.noveltyScore ?? 100) >= minNovelty
+      )
+      .filter((t) => (hideOverlap ? !t.overlapWithUrl : true))
       .filter((t) => {
         if (!search.trim()) return true;
         const q = search.toLowerCase();
@@ -65,8 +92,28 @@ export default function IdeasPage() {
           t.whyOpportunity.toLowerCase().includes(q)
         );
       })
-      .sort((a, b) => b.priorityScore - a.priorityScore);
-  }, [topics, search, filterType, filterPriority]);
+      // Default sort: weighted blend of impact + novelty + priority.
+      .sort((a, b) => {
+        const ai =
+          (a.impactScore ?? a.priorityScore) * 0.5 +
+          (a.noveltyScore ?? 100) * 0.3 +
+          a.priorityScore * 0.2;
+        const bi =
+          (b.impactScore ?? b.priorityScore) * 0.5 +
+          (b.noveltyScore ?? 100) * 0.3 +
+          b.priorityScore * 0.2;
+        return bi - ai;
+      });
+  }, [
+    topics,
+    search,
+    filterType,
+    filterPriority,
+    filterIntent,
+    minImpact,
+    minNovelty,
+    hideOverlap
+  ]);
 
   async function handleGenerate(count = 8) {
     setGenerating(true);
@@ -287,7 +334,7 @@ export default function IdeasPage() {
             className="input pl-9"
           />
         </div>
-        <div className="flex items-center gap-2 text-sm">
+        <div className="flex items-center gap-2 text-sm flex-wrap">
           <Filter className="size-4 text-ink-400" />
           <select
             value={filterType}
@@ -317,6 +364,51 @@ export default function IdeasPage() {
               </option>
             ))}
           </select>
+          <select
+            value={filterIntent}
+            onChange={(e) =>
+              setFilterIntent(e.target.value as SearchIntentType | "all")
+            }
+            className="input !w-auto !py-1.5"
+          >
+            <option value="all">All intents</option>
+            {INTENTS.map((i) => (
+              <option key={i} value={i}>
+                {i}
+              </option>
+            ))}
+          </select>
+          <select
+            value={minImpact}
+            onChange={(e) => setMinImpact(Number(e.target.value))}
+            className="input !w-auto !py-1.5"
+            title="Minimum impact score"
+          >
+            <option value={0}>Impact: any</option>
+            <option value={50}>Impact ≥ 50</option>
+            <option value={70}>Impact ≥ 70</option>
+            <option value={85}>Impact ≥ 85</option>
+          </select>
+          <select
+            value={minNovelty}
+            onChange={(e) => setMinNovelty(Number(e.target.value))}
+            className="input !w-auto !py-1.5"
+            title="Minimum novelty score (anti-cannibalization)"
+          >
+            <option value={0}>Novelty: any</option>
+            <option value={50}>Novelty ≥ 50</option>
+            <option value={70}>Novelty ≥ 70</option>
+            <option value={85}>Novelty ≥ 85</option>
+          </select>
+          <label className="flex items-center gap-1.5 text-xs text-ink-600 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={hideOverlap}
+              onChange={(e) => setHideOverlap(e.target.checked)}
+              className="size-3.5 accent-brand-600"
+            />
+            Hide flagged overlaps
+          </label>
         </div>
       </div>
 

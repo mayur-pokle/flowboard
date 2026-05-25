@@ -4,7 +4,9 @@ import { create } from "zustand";
 import type {
   AppState,
   Competitor,
+  ExistingContent,
   GeneratedContent,
+  Keyword,
   Settings,
   Status,
   Task,
@@ -49,12 +51,39 @@ interface Store extends AppState {
 
   // Settings
   updateSettings: (patch: Partial<Settings>) => Promise<void>;
-  addCompetitor: (c: Omit<Competitor, "id">) => Promise<void>;
+  addCompetitor: (
+    c: Omit<Competitor, "id" | "tier"> & { tier?: Competitor["tier"] }
+  ) => Promise<void>;
   updateCompetitor: (
     id: string,
     patch: Partial<Omit<Competitor, "id">>
   ) => Promise<void>;
   removeCompetitor: (id: string) => Promise<void>;
+
+  // Keywords
+  addKeyword: (
+    k: Omit<Keyword, "id" | "createdAt" | "updatedAt">
+  ) => Promise<void>;
+  updateKeyword: (
+    id: string,
+    patch: Partial<Omit<Keyword, "id" | "createdAt" | "updatedAt">>
+  ) => Promise<void>;
+  removeKeyword: (id: string) => Promise<void>;
+
+  // Existing content
+  addExistingContent: (
+    c: Omit<ExistingContent, "id" | "createdAt">
+  ) => Promise<void>;
+  updateExistingContent: (
+    id: string,
+    patch: Partial<Omit<ExistingContent, "id" | "createdAt">>
+  ) => Promise<void>;
+  removeExistingContent: (id: string) => Promise<void>;
+  importSitemap: (sitemapUrl: string) => Promise<{
+    imported: number;
+    skipped: number;
+    sampled: number;
+  }>;
 
   // Bookkeeping
   setLastGeneratedAt: (iso: string) => Promise<void>;
@@ -97,6 +126,8 @@ const initialState: AppState = {
   deletedTopicHashes: [],
   movedTopicHashes: [],
   tasks: [],
+  keywords: [],
+  existingContent: [],
   settings: defaultSettings,
   selectedTaskId: null,
   lastGeneratedAt: null
@@ -133,28 +164,35 @@ export const useStore = create<Store>()((set, get) => ({
 
   hydrate: async () => {
     try {
-      const [topicsRes, tasksRes, settingsRes] = await Promise.all([
-        api<{
-          topics: Topic[];
-          deletedTopicHashes: string[];
-          movedTopicHashes: string[];
-        }>("/api/topics"),
-        api<{ tasks: Task[] }>("/api/tasks"),
-        api<{
-          settings: Settings & {
-            id: string;
-            lastGeneratedAt: string | null;
-            competitors: Competitor[];
-          };
-          serverConfigured: Store["serverConfigured"];
-        }>("/api/settings")
-      ]);
+      const [topicsRes, tasksRes, settingsRes, kwRes, ecRes] =
+        await Promise.all([
+          api<{
+            topics: Topic[];
+            deletedTopicHashes: string[];
+            movedTopicHashes: string[];
+          }>("/api/topics"),
+          api<{ tasks: Task[] }>("/api/tasks"),
+          api<{
+            settings: Settings & {
+              id: string;
+              lastGeneratedAt: string | null;
+              competitors: Competitor[];
+            };
+            serverConfigured: Store["serverConfigured"];
+          }>("/api/settings"),
+          api<{ keywords: Keyword[] }>("/api/keywords"),
+          api<{ existingContent: ExistingContent[] }>(
+            "/api/existing-content"
+          )
+        ]);
       const s = settingsRes.settings;
       set({
         topics: topicsRes.topics,
         deletedTopicHashes: topicsRes.deletedTopicHashes,
         movedTopicHashes: topicsRes.movedTopicHashes,
         tasks: tasksRes.tasks,
+        keywords: kwRes.keywords || [],
+        existingContent: ecRes.existingContent || [],
         settings: {
           ...defaultSettings,
           companyName: s.companyName,
@@ -178,7 +216,16 @@ export const useStore = create<Store>()((set, get) => ({
               ? ((s as unknown as { primaryProvider: "openai" | "gemini" })
                   .primaryProvider as "openai" | "gemini")
               : "auto",
-          competitors: s.competitors || []
+          // Normalize each competitor's tier (legacy rows may be missing it).
+          competitors: (s.competitors || []).map((c) => ({
+            ...c,
+            tier:
+              c.tier === "primary" ||
+              c.tier === "secondary" ||
+              c.tier === "watch"
+                ? c.tier
+                : "secondary"
+          }))
         },
         lastGeneratedAt: s.lastGeneratedAt,
         serverConfigured: settingsRes.serverConfigured,
@@ -452,15 +499,16 @@ export const useStore = create<Store>()((set, get) => ({
 
   addCompetitor: async (c) => {
     const prev = get().settings.competitors;
+    const tier: Competitor["tier"] = c.tier || "secondary";
     try {
       const { id } = await api<{ id: string }>("/api/competitors", {
         method: "POST",
-        json: c
+        json: { ...c, tier }
       });
       set((s) => ({
         settings: {
           ...s.settings,
-          competitors: [...prev, { id, ...c }]
+          competitors: [...prev, { id, ...c, tier }]
         }
       }));
     } catch (err) {
@@ -498,6 +546,112 @@ export const useStore = create<Store>()((set, get) => ({
       set((s) => ({ settings: { ...s.settings, competitors: prev } }));
       throw err;
     }
+  },
+
+  // ───────── Keywords ─────────
+  addKeyword: async (k) => {
+    try {
+      const { id } = await api<{ id: string }>("/api/keywords", {
+        method: "POST",
+        json: k
+      });
+      const now = new Date().toISOString();
+      set((s) => ({
+        keywords: [{ id, ...k, createdAt: now, updatedAt: now }, ...s.keywords]
+      }));
+    } catch (err) {
+      throw err;
+    }
+  },
+
+  updateKeyword: async (id, patch) => {
+    const prev = get().keywords;
+    set({
+      keywords: prev.map((k) =>
+        k.id === id
+          ? { ...k, ...patch, updatedAt: new Date().toISOString() }
+          : k
+      )
+    });
+    try {
+      await api(`/api/keywords/${id}`, { method: "PATCH", json: patch });
+    } catch (err) {
+      set({ keywords: prev });
+      throw err;
+    }
+  },
+
+  removeKeyword: async (id) => {
+    const prev = get().keywords;
+    set({ keywords: prev.filter((k) => k.id !== id) });
+    try {
+      await api(`/api/keywords/${id}`, { method: "DELETE" });
+    } catch (err) {
+      set({ keywords: prev });
+      throw err;
+    }
+  },
+
+  // ───────── Existing content ─────────
+  addExistingContent: async (c) => {
+    const prev = get().existingContent;
+    try {
+      await api("/api/existing-content", { method: "POST", json: c });
+      // Refetch so we get the canonical id back without a roundtrip wrapper.
+      const { existingContent: rows } = await api<{
+        existingContent: ExistingContent[];
+      }>("/api/existing-content");
+      set({ existingContent: rows });
+    } catch (err) {
+      set({ existingContent: prev });
+      throw err;
+    }
+  },
+
+  updateExistingContent: async (id, patch) => {
+    const prev = get().existingContent;
+    set({
+      existingContent: prev.map((c) =>
+        c.id === id ? { ...c, ...patch } : c
+      )
+    });
+    try {
+      await api(`/api/existing-content/${id}`, {
+        method: "PATCH",
+        json: patch
+      });
+    } catch (err) {
+      set({ existingContent: prev });
+      throw err;
+    }
+  },
+
+  removeExistingContent: async (id) => {
+    const prev = get().existingContent;
+    set({ existingContent: prev.filter((c) => c.id !== id) });
+    try {
+      await api(`/api/existing-content/${id}`, { method: "DELETE" });
+    } catch (err) {
+      set({ existingContent: prev });
+      throw err;
+    }
+  },
+
+  importSitemap: async (sitemapUrl) => {
+    const result = await api<{
+      imported: number;
+      skipped: number;
+      sampled: number;
+    }>("/api/existing-content/import-sitemap", {
+      method: "POST",
+      json: { sitemapUrl }
+    });
+    // Refetch the library to include freshly imported rows.
+    const { existingContent: rows } = await api<{
+      existingContent: ExistingContent[];
+    }>("/api/existing-content");
+    set({ existingContent: rows });
+    return result;
   },
 
   setLastGeneratedAt: async (iso) => {

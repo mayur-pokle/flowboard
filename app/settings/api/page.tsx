@@ -25,27 +25,64 @@ import type { PrimaryProvider } from "@/lib/types";
 
 // Curated model lists shown in dropdowns. Users can still type a custom
 // model name via the "Custom…" option if their account supports a model
-// that isn't in this list.
+// that isn't in this list. Listed roughly by quality — top first, budget at
+// the bottom.
 const OPENAI_MODELS = [
+  // ── GPT-4.1 family ──
+  { value: "gpt-4.1", label: "GPT-4.1 — highest quality" },
+  { value: "gpt-4.1-mini", label: "GPT-4.1 mini — balanced" },
+  { value: "gpt-4.1-nano", label: "GPT-4.1 nano — smallest 4.1, lowest cost" },
+
+  // ── GPT-4o family ──
+  { value: "gpt-4o", label: "GPT-4o — high quality" },
   { value: "gpt-4o-mini", label: "GPT-4o mini — fast, cheap (recommended)" },
-  { value: "gpt-4o", label: "GPT-4o — best quality, higher cost" },
-  { value: "gpt-4.1-mini", label: "GPT-4.1 mini" },
-  { value: "gpt-4.1", label: "GPT-4.1 — high quality" },
-  { value: "o4-mini", label: "o4 mini — reasoning model" },
-  { value: "gpt-3.5-turbo", label: "GPT-3.5 Turbo — legacy" }
+
+  // ── Reasoning (o-series) ──
+  { value: "o4-mini", label: "o4 mini — reasoning" },
+  { value: "o3-mini", label: "o3 mini — reasoning, smaller" },
+  { value: "o1-mini", label: "o1 mini — reasoning, legacy" },
+
+  // ── GPT-3.5 (budget / legacy) ──
+  { value: "gpt-3.5-turbo", label: "GPT-3.5 Turbo — budget" },
+  { value: "gpt-3.5-turbo-0125", label: "GPT-3.5 Turbo 0125 — pinned" },
+  { value: "gpt-3.5-turbo-1106", label: "GPT-3.5 Turbo 1106 — pinned" },
+  { value: "gpt-3.5-turbo-instruct", label: "GPT-3.5 Turbo Instruct — legacy completion" }
 ];
 
-// 2.x models are what's universally available on free tier as of 2026.
-// 1.5 lineage has been deprecated for new accounts in most regions.
+// Listed by generation, newest first. Availability varies by API key region
+// and Google account — if the picked model returns "Model not available," try
+// another variant.
 const GEMINI_MODELS = [
-  { value: "gemini-2.0-flash", label: "Gemini 2.0 Flash — fast, free tier (recommended)" },
-  { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash" },
-  { value: "gemini-2.5-pro", label: "Gemini 2.5 Pro — higher quality" },
-  { value: "gemini-flash-latest", label: "Gemini Flash (latest alias)" },
-  { value: "gemini-pro-latest", label: "Gemini Pro (latest alias)" },
+  // ── Gemini 2.5 ──
+  { value: "gemini-2.5-pro", label: "Gemini 2.5 Pro — highest quality" },
+  { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash — fast, high quality" },
+  { value: "gemini-2.5-flash-lite", label: "Gemini 2.5 Flash Lite — fastest, lowest cost" },
+  { value: "gemini-2.5-flash-lite-preview", label: "Gemini 2.5 Flash Lite (preview)" },
+
+  // ── Gemini 2.0 ──
+  { value: "gemini-2.0-flash", label: "Gemini 2.0 Flash — free-tier friendly (recommended)" },
   { value: "gemini-2.0-flash-exp", label: "Gemini 2.0 Flash (experimental)" },
-  { value: "gemini-1.5-flash-latest", label: "Gemini 1.5 Flash (legacy)" },
-  { value: "gemini-1.5-pro-latest", label: "Gemini 1.5 Pro (legacy)" }
+  { value: "gemini-2.0-flash-lite", label: "Gemini 2.0 Flash Lite — budget" },
+  { value: "gemini-2.0-flash-lite-001", label: "Gemini 2.0 Flash Lite 001 — pinned" },
+  { value: "gemini-2.0-flash-thinking-exp", label: "Gemini 2.0 Flash Thinking (experimental)" },
+
+  // ── Floating aliases ──
+  { value: "gemini-flash-latest", label: "Gemini Flash (latest alias)" },
+  { value: "gemini-flash-lite-latest", label: "Gemini Flash Lite (latest alias)" },
+  { value: "gemini-pro-latest", label: "Gemini Pro (latest alias)" },
+
+  // ── Gemini 1.5 (legacy — being deprecated) ──
+  { value: "gemini-1.5-pro-latest", label: "Gemini 1.5 Pro (latest, legacy)" },
+  { value: "gemini-1.5-pro", label: "Gemini 1.5 Pro (legacy)" },
+  { value: "gemini-1.5-pro-002", label: "Gemini 1.5 Pro 002 (legacy)" },
+  { value: "gemini-1.5-pro-001", label: "Gemini 1.5 Pro 001 (legacy)" },
+  { value: "gemini-1.5-flash-latest", label: "Gemini 1.5 Flash (latest, legacy)" },
+  { value: "gemini-1.5-flash", label: "Gemini 1.5 Flash (legacy)" },
+  { value: "gemini-1.5-flash-002", label: "Gemini 1.5 Flash 002 (legacy)" },
+  { value: "gemini-1.5-flash-001", label: "Gemini 1.5 Flash 001 (legacy)" },
+  { value: "gemini-1.5-flash-8b", label: "Gemini 1.5 Flash 8B — smallest legacy" },
+  { value: "gemini-1.5-flash-8b-latest", label: "Gemini 1.5 Flash 8B (latest, legacy)" },
+  { value: "gemini-1.5-flash-8b-001", label: "Gemini 1.5 Flash 8B 001 (legacy, pinned)" }
 ];
 
 export default function SettingsApiPage() {
@@ -79,6 +116,9 @@ export default function SettingsApiPage() {
   const [newCompetitorName, setNewCompetitorName] = useState("");
   const [newCompetitorUrl, setNewCompetitorUrl] = useState("");
   const [newCompetitorNotes, setNewCompetitorNotes] = useState("");
+  const [newCompetitorTier, setNewCompetitorTier] = useState<
+    "primary" | "secondary" | "watch"
+  >("secondary");
 
   useEffect(() => {
     if (!hydrated) return;
@@ -132,10 +172,11 @@ export default function SettingsApiPage() {
       return;
     }
     try {
-      await addCompetitor({ name, url, notes });
+      await addCompetitor({ name, url, notes, tier: newCompetitorTier });
       setNewCompetitorName("");
       setNewCompetitorUrl("");
       setNewCompetitorNotes("");
+      setNewCompetitorTier("secondary");
       toast("Competitor added", "success");
     } catch (err) {
       toast((err as Error).message, "error");
@@ -330,7 +371,7 @@ export default function SettingsApiPage() {
                   key={c.id}
                   className="px-1 py-2 grid grid-cols-[1fr_auto] gap-2 items-start"
                 >
-                  <div className="grid sm:grid-cols-[1fr_1fr_2fr] gap-2">
+                  <div className="grid sm:grid-cols-[1fr_1fr_2fr_140px] gap-2">
                     <input
                       className="input !py-1.5 text-sm"
                       value={c.name}
@@ -355,6 +396,24 @@ export default function SettingsApiPage() {
                       }
                       placeholder="Why we win/lose against them"
                     />
+                    <select
+                      className="input !py-1.5 text-sm"
+                      value={c.tier}
+                      onChange={(e) =>
+                        updateCompetitor(c.id, {
+                          tier: e.target.value as
+                            | "primary"
+                            | "secondary"
+                            | "watch"
+                        })
+                      }
+                      aria-label="Tier"
+                      title="Tier — controls how heavily the AI weights this competitor"
+                    >
+                      <option value="primary">Primary (beat them)</option>
+                      <option value="secondary">Secondary</option>
+                      <option value="watch">Watch only</option>
+                    </select>
                   </div>
                   <div className="flex items-center gap-1">
                     {c.url ? (
@@ -386,7 +445,7 @@ export default function SettingsApiPage() {
             <div className="text-[11px] font-semibold uppercase tracking-wider text-ink-500 mb-2">
               Add competitor
             </div>
-            <div className="grid sm:grid-cols-[1fr_1fr_2fr_auto] gap-2">
+            <div className="grid sm:grid-cols-[1fr_1fr_2fr_140px_auto] gap-2">
               <input
                 className="input !py-1.5 text-sm"
                 value={newCompetitorName}
@@ -408,11 +467,29 @@ export default function SettingsApiPage() {
                 }}
                 placeholder="Strong on close automation; weak on FP&A."
               />
+              <select
+                className="input !py-1.5 text-sm"
+                value={newCompetitorTier}
+                onChange={(e) =>
+                  setNewCompetitorTier(
+                    e.target.value as "primary" | "secondary" | "watch"
+                  )
+                }
+              >
+                <option value="primary">Primary</option>
+                <option value="secondary">Secondary</option>
+                <option value="watch">Watch only</option>
+              </select>
               <Button variant="primary" onClick={handleAddCompetitor}>
                 <Plus className="size-4" />
                 Add
               </Button>
             </div>
+            <Hint>
+              <strong>Primary</strong> competitors are weighted heavily in
+              every topic generation. <strong>Watch</strong> competitors are
+              tracked but don&apos;t bias prompts.
+            </Hint>
           </div>
         </Card>
 

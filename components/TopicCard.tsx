@@ -8,11 +8,22 @@ import {
   X,
   Target,
   TrendingUp,
-  Lightbulb
+  Lightbulb,
+  AlertTriangle,
+  Sparkles,
+  ExternalLink
 } from "lucide-react";
 import type { Topic } from "@/lib/types";
 import { Button } from "@/components/ui/Button";
 import { PriorityBadge, TypeBadge, Badge } from "@/components/ui/Badge";
+
+// Pick a badge tone for a 0-100 score (used for impact + novelty).
+function scoreTone(score: number): "success" | "info" | "warn" | "danger" {
+  if (score >= 80) return "success";
+  if (score >= 60) return "info";
+  if (score >= 40) return "warn";
+  return "danger";
+}
 
 export function TopicCard({
   topic,
@@ -25,6 +36,9 @@ export function TopicCard({
 }) {
   const [previewOpen, setPreviewOpen] = useState(false);
 
+  const impact = topic.impactScore ?? topic.priorityScore;
+  const novelty = topic.noveltyScore;
+
   return (
     <div className="card p-4 hover:shadow-cardHover transition">
       <div className="flex items-start gap-3">
@@ -32,8 +46,19 @@ export function TopicCard({
           <div className="flex items-center gap-2 flex-wrap mb-1.5">
             <TypeBadge value={topic.contentType} />
             <PriorityBadge value={topic.priority} />
+            {topic.intent ? (
+              <Badge tone="neutral" className="capitalize">
+                {topic.intent}
+              </Badge>
+            ) : null}
             <Badge tone="neutral">Effort: {topic.estimatedEffort}</Badge>
-            <Badge tone="info">{topic.priorityScore}/100</Badge>
+            <Badge tone={scoreTone(impact)} className="gap-1">
+              <Sparkles className="size-3" />
+              Impact {impact}
+            </Badge>
+            {typeof novelty === "number" ? (
+              <Badge tone={scoreTone(novelty)}>Novelty {novelty}</Badge>
+            ) : null}
           </div>
           <h3 className="text-[15px] font-semibold text-ink-900 leading-snug">
             {topic.title}
@@ -44,6 +69,23 @@ export function TopicCard({
             <span className="text-ink-300">·</span>
             <span>{topic.searchIntent}</span>
           </div>
+          {topic.overlapWithUrl ? (
+            <div className="mt-2 flex items-start gap-1.5 rounded-md border border-amber-200 bg-amber-50/60 px-2.5 py-1.5 text-[12px] text-amber-900">
+              <AlertTriangle className="size-3.5 shrink-0 mt-0.5 text-amber-600" />
+              <div className="min-w-0">
+                Possible overlap with existing content:{" "}
+                <a
+                  href={topic.overlapWithUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium underline decoration-amber-400 hover:decoration-amber-700 break-all"
+                >
+                  {topic.overlapWithTitle || topic.overlapWithUrl}
+                </a>
+                <ExternalLink className="size-3 inline ml-0.5" />
+              </div>
+            </div>
+          ) : null}
           <p className="text-sm text-ink-600 mt-2 leading-relaxed line-clamp-2">
             {topic.whyOpportunity}
           </p>
@@ -90,11 +132,39 @@ export function TopicCard({
                 <div className="flex gap-2 mb-2 flex-wrap">
                   <TypeBadge value={topic.contentType} />
                   <PriorityBadge value={topic.priority} />
-                  <Badge tone="info">Score {topic.priorityScore}/100</Badge>
+                  {topic.intent ? (
+                    <Badge tone="neutral" className="capitalize">
+                      {topic.intent}
+                    </Badge>
+                  ) : null}
+                  <Badge tone={scoreTone(impact)}>
+                    Impact {impact}/100
+                  </Badge>
+                  {typeof novelty === "number" ? (
+                    <Badge tone={scoreTone(novelty)}>
+                      Novelty {novelty}/100
+                    </Badge>
+                  ) : null}
                 </div>
                 <h2 className="text-xl font-semibold text-ink-900">
                   {topic.title}
                 </h2>
+                {topic.overlapWithUrl ? (
+                  <div className="mt-2 flex items-start gap-1.5 rounded-md border border-amber-200 bg-amber-50/60 px-2.5 py-1.5 text-[12px] text-amber-900">
+                    <AlertTriangle className="size-3.5 shrink-0 mt-0.5 text-amber-600" />
+                    <div className="min-w-0">
+                      May cannibalize an existing page:{" "}
+                      <a
+                        href={topic.overlapWithUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-medium underline decoration-amber-400 hover:decoration-amber-700 break-all"
+                      >
+                        {topic.overlapWithTitle || topic.overlapWithUrl}
+                      </a>
+                    </div>
+                  </div>
+                ) : null}
               </div>
               <Button variant="ghost" onClick={() => setPreviewOpen(false)}>
                 <X className="size-4" />

@@ -5,9 +5,30 @@ import type {
   Effort,
   GeneratedContent,
   Priority,
+  SearchIntentType,
   Topic
 } from "./types";
 import { slugify, uid } from "./utils";
+
+export interface PriorityKeywordCtx {
+  keyword: string;
+  priority: "P0" | "P1" | "P2";
+  intent?: SearchIntentType;
+}
+
+export interface ExistingContentCtx {
+  url: string;
+  title: string;
+  targetKeyword?: string;
+  intent?: string;
+}
+
+export interface TieredCompetitor {
+  name?: string;
+  url?: string;
+  notes?: string;
+  tier?: "primary" | "secondary" | "watch";
+}
 
 export interface BrandContext {
   niche: string;
@@ -20,11 +41,14 @@ export interface BrandContext {
   brandVoice?: string;
   primaryCta?: string;
   primaryGeo?: string;
-  // Competitors with structure (name, url, notes) for richer prompts.
-  competitors?: Array<{ name?: string; url?: string; notes?: string } | string>;
+  // Competitors with structure (name, url, notes, tier) for richer prompts.
+  competitors?: Array<TieredCompetitor | string>;
   seedKeywords?: string[];
   topicsToAvoid?: string[];
   recentTitles?: string[];
+  // ── Priority targeting & cannibalization (new) ──
+  priorityKeywords?: PriorityKeywordCtx[];
+  existingContent?: ExistingContentCtx[];
 }
 
 export type PrimaryProvider = "auto" | "openai" | "gemini";
@@ -75,8 +99,10 @@ Return strict JSON only — no prose, no markdown fences. Schema:
       "contentType": "Calculator" | "Template" | "Guide" | "Whitepaper" | "Checklist" | "Framework",
       "targetKeyword": string,
       "searchIntent": string,
+      "intent": "informational" | "commercial" | "transactional" | "navigational",
       "priority": "Low" | "Medium" | "High",
       "priorityScore": number,
+      "impactScore": number,
       "whyOpportunity": string,
       "suggestedCta": string,
       "estimatedEffort": "Low" | "Medium" | "High",
@@ -92,23 +118,110 @@ Rules:
 - Mix content types — at least 2 calculators/tools and 2 templates if N >= 6.
 - Target keywords must be specific long-tail (3-6 words).
 - priorityScore is 0-100 and must be consistent with priority ("High" -> 70-100).
+- impactScore is 0-100 reflecting demand × brand fit × competitor white-space × novelty.
+- intent must be one of: informational, commercial, transactional, navigational.
 - whyOpportunity must reference search demand, competitor weakness, or business impact in 1-2 sentences.
-- Avoid duplicates. Avoid topics in the "Recent titles" list provided by the user.`;
+
+CANNIBALIZATION RULES (CRITICAL — violating any of these is a failure):
+1. NEVER propose a topic whose primary keyword overlaps with the "Existing content" list (treat the list as already published — proposing it again would cannibalize SEO).
+2. NEVER propose two topics in this batch with the same primary keyword OR the same search intent on the same head term.
+3. If a topic is a long-tail expansion of an existing page, it must clearly differ on intent (e.g. informational vs commercial) AND target a distinct long-tail variant.
+4. P0 keywords listed by the user MUST each be addressed by at least one topic in the batch IF there isn't already a "Existing content" page targeting them.
+5. Avoid any title or keyword that is a near-duplicate of items in "Recent titles" or "Existing content".`;
 
 function formatCompetitors(
   competitors: BrandContext["competitors"]
 ): string {
   if (!competitors?.length) return "";
-  const lines = competitors
-    .map((c) => {
-      if (typeof c === "string") return `- ${c}`;
-      const parts: string[] = [];
-      if (c.name) parts.push(c.name);
-      if (c.url) parts.push(`<${c.url}>`);
-      if (c.notes) parts.push(`— ${c.notes}`);
-      return parts.length ? `- ${parts.join(" ")}` : null;
-    })
-    .filter(Boolean);
+  // Group by tier so the prompt makes the priority explicit.
+  const primary: string[] = [];
+  const secondary: string[] = [];
+  const watch: string[] = [];
+  for (const c of competitors) {
+    if (typeof c === "string") {
+      secondary.push(`- ${c}`);
+      continue;
+    }
+    const parts: string[] = [];
+    if (c.name) parts.push(c.name);
+    if (c.url) parts.push(`<${c.url}>`);
+    if (c.notes) parts.push(`— ${c.notes}`);
+    const line = parts.length ? `- ${parts.join(" ")}` : null;
+    if (!line) continue;
+    if (c.tier === "primary") primary.push(line);
+    else if (c.tier === "watch") watch.push(line);
+    else secondary.push(line);
+  }
+  const out: string[] = [];
+  if (primary.length) {
+    out.push("## PRIMARY competitors (orient topics to beat these directly):");
+    out.push(...primary);
+  }
+  if (secondary.length) {
+    if (out.length) out.push("");
+    out.push("## Secondary competitors (context):");
+    out.push(...secondary);
+  }
+  if (watch.length) {
+    if (out.length) out.push("");
+    out.push("## Watch only (do not optimize against, track only):");
+    out.push(...watch);
+  }
+  return out.join("\n");
+}
+
+function formatPriorityKeywords(keywords?: PriorityKeywordCtx[]): string {
+  if (!keywords?.length) return "";
+  const p0 = keywords.filter((k) => k.priority === "P0");
+  const p1 = keywords.filter((k) => k.priority === "P1");
+  const p2 = keywords.filter((k) => k.priority === "P2");
+  const lines: string[] = [];
+  if (p0.length) {
+    lines.push(
+      "## P0 keywords (MUST address each one — these are the user's top priorities):"
+    );
+    for (const k of p0) {
+      lines.push(
+        `- ${k.keyword}${k.intent ? ` [intent: ${k.intent}]` : ""}`
+      );
+    }
+  }
+  if (p1.length) {
+    if (lines.length) lines.push("");
+    lines.push("## P1 keywords (nice to address, lower priority):");
+    for (const k of p1) {
+      lines.push(
+        `- ${k.keyword}${k.intent ? ` [intent: ${k.intent}]` : ""}`
+      );
+    }
+  }
+  if (p2.length) {
+    if (lines.length) lines.push("");
+    lines.push("## P2 keywords (watchlist — only address if highly relevant):");
+    for (const k of p2) {
+      lines.push(`- ${k.keyword}`);
+    }
+  }
+  return lines.join("\n");
+}
+
+function formatExistingContent(items?: ExistingContentCtx[]): string {
+  if (!items?.length) return "";
+  // Cap to avoid blowing up the prompt — the most recent ~50 give the AI a
+  // strong signal without flooding context.
+  const cap = items.slice(0, 50);
+  const lines: string[] = [];
+  lines.push(
+    "## Existing content already published (DO NOT propose topics that cannibalize these):"
+  );
+  for (const c of cap) {
+    const kw = c.targetKeyword ? ` — target: "${c.targetKeyword}"` : "";
+    const intent = c.intent ? ` [${c.intent}]` : "";
+    lines.push(`- "${c.title}"${kw}${intent} <${c.url}>`);
+  }
+  if (items.length > cap.length) {
+    lines.push(`(…and ${items.length - cap.length} more)`);
+  }
   return lines.join("\n");
 }
 
@@ -130,8 +243,22 @@ function buildTopicUserPrompt(ctx: BrandContext, count: number) {
   const compsBlock = formatCompetitors(ctx.competitors);
   if (compsBlock) {
     lines.push("");
-    lines.push("# Known competitors (study their content gaps)");
+    lines.push("# Competitors");
     lines.push(compsBlock);
+  }
+
+  const kwBlock = formatPriorityKeywords(ctx.priorityKeywords);
+  if (kwBlock) {
+    lines.push("");
+    lines.push("# Priority keywords");
+    lines.push(kwBlock);
+  }
+
+  const existingBlock = formatExistingContent(ctx.existingContent);
+  if (existingBlock) {
+    lines.push("");
+    lines.push("# Existing content library");
+    lines.push(existingBlock);
   }
 
   if (ctx.seedKeywords?.length) {
@@ -151,7 +278,7 @@ function buildTopicUserPrompt(ctx: BrandContext, count: number) {
 
   lines.push("");
   lines.push(
-    `Generate ${count} fresh, high-opportunity content ideas tailored to this brand. Each \`whyOpportunity\` should reference, where relevant, the competitor gap or our specific value proposition. Return JSON only.`
+    `Generate ${count} fresh, high-opportunity content ideas tailored to this brand. Prioritize P0 keywords that aren't already covered by existing content. Each \`whyOpportunity\` should reference, where relevant, the competitor gap or our specific value proposition. Return JSON only.`
   );
 
   return lines.join("\n");
@@ -185,6 +312,9 @@ export async function generateTopics(
   const warnings: string[] = [];
   const order = providerOrder(k.primaryProvider);
 
+  let generated: Topic[] = [];
+  let provider: "openai" | "gemini" | "mock" = "mock";
+
   for (const which of order) {
     if (which === "openai" && k.openai) {
       try {
@@ -194,7 +324,9 @@ export async function generateTopics(
           k.openai,
           k.openaiModel || DEFAULT_OPENAI_MODEL
         );
-        return { topics: normalizeTopics(raw), provider: "openai", warnings };
+        generated = normalizeTopics(raw);
+        provider = "openai";
+        break;
       } catch (err) {
         const msg = describeError(err);
         console.error("[ai] OpenAI topics failed:", msg);
@@ -209,7 +341,9 @@ export async function generateTopics(
           k.gemini,
           k.geminiModel || DEFAULT_GEMINI_MODEL
         );
-        return { topics: normalizeTopics(raw), provider: "gemini", warnings };
+        generated = normalizeTopics(raw);
+        provider = "gemini";
+        break;
       } catch (err) {
         const msg = describeError(err);
         console.error("[ai] Gemini topics failed:", msg);
@@ -218,8 +352,39 @@ export async function generateTopics(
     }
   }
 
-  // Final fallback: mock
-  return { topics: mockTopics(ctx, count), provider: "mock", warnings };
+  // If no provider succeeded, use mock as the final fallback.
+  if (generated.length === 0) {
+    generated = mockTopics(ctx, count);
+    provider = "mock";
+  }
+
+  // Score novelty against the existing content library. This is best-effort
+  // — failures (e.g. no OpenAI key for embeddings) fall back to lexical.
+  if (ctx.existingContent?.length) {
+    try {
+      const scores = await scoreNovelty(
+        generated,
+        ctx.existingContent,
+        k.openai || undefined
+      );
+      generated = generated.map((t, i) => ({
+        ...t,
+        noveltyScore: scores[i]?.noveltyScore,
+        overlapWithUrl: scores[i]?.overlapWithUrl,
+        overlapWithTitle: scores[i]?.overlapWithTitle
+      }));
+    } catch (err) {
+      console.warn(
+        "[ai] novelty scoring threw:",
+        (err as Error)?.message || err
+      );
+    }
+  } else {
+    // No library to compare against — mark everything as fully novel.
+    generated = generated.map((t) => ({ ...t, noveltyScore: 100 }));
+  }
+
+  return { topics: generated, provider, warnings };
 }
 
 async function generateTopicsOpenAI(
@@ -272,6 +437,12 @@ function normalizeTopics(raw: unknown[]): Topic[] {
   ];
   const priorities: Priority[] = ["Low", "Medium", "High"];
   const efforts: Effort[] = ["Low", "Medium", "High"];
+  const intents: SearchIntentType[] = [
+    "informational",
+    "commercial",
+    "transactional",
+    "navigational"
+  ];
 
   const out: Topic[] = [];
   for (const r of raw) {
@@ -293,14 +464,26 @@ function normalizeTopics(raw: unknown[]): Topic[] {
       0,
       Math.min(100, Number(obj.priorityScore) || (pr === "High" ? 80 : pr === "Medium" ? 55 : 30))
     );
+    const impact = Math.max(
+      0,
+      Math.min(
+        100,
+        typeof obj.impactScore === "number" ? Number(obj.impactScore) : score
+      )
+    );
+    const intent = intents.includes(obj.intent as SearchIntentType)
+      ? (obj.intent as SearchIntentType)
+      : inferIntent(String(obj.searchIntent || ""));
     out.push({
       id: uid("topic"),
       title,
       contentType: ct,
       targetKeyword,
       searchIntent: String(obj.searchIntent || "Informational").trim(),
+      intent,
       priority: pr,
       priorityScore: score,
+      impactScore: impact,
       whyOpportunity: String(obj.whyOpportunity || "").trim(),
       suggestedCta: String(obj.suggestedCta || "Try the tool").trim(),
       estimatedEffort: ef,
@@ -311,6 +494,175 @@ function normalizeTopics(raw: unknown[]): Topic[] {
     });
   }
   return out;
+}
+
+// Rough heuristic to infer intent from a free-text searchIntent string.
+function inferIntent(text: string): SearchIntentType {
+  const s = text.toLowerCase();
+  if (/transact|purchase|buy|signup|sign[- ]?up|book|trial/.test(s))
+    return "transactional";
+  if (/commercial|compare|vs|best|review|pricing|alternative|evaluat/.test(s))
+    return "commercial";
+  if (/navigat|brand|login|homepage/.test(s)) return "navigational";
+  return "informational";
+}
+
+// ============================================================
+// Novelty scoring (cannibalization detection)
+// ============================================================
+
+// Returns a novelty score (0-100, higher = more original) for each topic
+// plus the closest match from the existing-content library, if any.
+//
+// Tries OpenAI embeddings first; on failure (no key, error, or no library)
+// falls back to a lexical Jaccard score over normalized tokens. Either way
+// the function never throws — at worst it returns 100s for everything.
+export async function scoreNovelty(
+  topics: Topic[],
+  existing: ExistingContentCtx[],
+  apiKey?: string
+): Promise<
+  Array<{
+    noveltyScore: number;
+    overlapWithUrl?: string;
+    overlapWithTitle?: string;
+  }>
+> {
+  if (topics.length === 0) return [];
+  // No library to compare against → everything is novel by definition.
+  if (!existing.length)
+    return topics.map(() => ({ noveltyScore: 100 }));
+
+  // Try embeddings first.
+  if (apiKey) {
+    try {
+      return await scoreNoveltyEmbeddings(topics, existing, apiKey);
+    } catch (err) {
+      console.warn(
+        "[ai] embedding-based novelty scoring failed, falling back to lexical:",
+        (err as Error)?.message || err
+      );
+    }
+  }
+  return scoreNoveltyLexical(topics, existing);
+}
+
+function topicText(t: { title: string; targetKeyword: string }) {
+  return `${t.title}\n${t.targetKeyword}`;
+}
+
+function existingText(c: ExistingContentCtx) {
+  return `${c.title}\n${c.targetKeyword || ""}`.trim();
+}
+
+async function scoreNoveltyEmbeddings(
+  topics: Topic[],
+  existing: ExistingContentCtx[],
+  apiKey: string
+) {
+  const client = new OpenAI({ apiKey });
+  const topicInputs = topics.map(topicText);
+  const existingInputs = existing.map(existingText);
+  const allInputs = [...topicInputs, ...existingInputs];
+
+  const res = await client.embeddings.create({
+    model: "text-embedding-3-small",
+    input: allInputs
+  });
+  const vectors = res.data.map((d) => d.embedding as number[]);
+  const topicVecs = vectors.slice(0, topicInputs.length);
+  const existingVecs = vectors.slice(topicInputs.length);
+
+  return topicVecs.map((tv) => {
+    let bestSim = -1;
+    let bestIdx = -1;
+    for (let i = 0; i < existingVecs.length; i++) {
+      const sim = cosine(tv, existingVecs[i]);
+      if (sim > bestSim) {
+        bestSim = sim;
+        bestIdx = i;
+      }
+    }
+    // Cosine similarity is in [-1, 1] but for embeddings it's usually [0, 1].
+    // Clamp + invert so 1.0 similarity → 0 novelty, 0 similarity → 100 novelty.
+    const sim = Math.max(0, Math.min(1, bestSim));
+    const novelty = Math.round((1 - sim) * 100);
+    // Only flag overlap when similarity is high — below 0.75 means "related
+    // but not cannibalizing."
+    const overlap = sim >= 0.75 ? existing[bestIdx] : undefined;
+    return {
+      noveltyScore: novelty,
+      overlapWithUrl: overlap?.url,
+      overlapWithTitle: overlap?.title
+    };
+  });
+}
+
+function scoreNoveltyLexical(
+  topics: Topic[],
+  existing: ExistingContentCtx[]
+) {
+  const existingTokens = existing.map((c) =>
+    tokenSet(existingText(c))
+  );
+  return topics.map((t) => {
+    const tv = tokenSet(topicText(t));
+    let bestSim = 0;
+    let bestIdx = -1;
+    for (let i = 0; i < existingTokens.length; i++) {
+      const sim = jaccard(tv, existingTokens[i]);
+      if (sim > bestSim) {
+        bestSim = sim;
+        bestIdx = i;
+      }
+    }
+    const novelty = Math.round((1 - bestSim) * 100);
+    // Lexical Jaccard is harsher than cosine; threshold a bit lower.
+    const overlap = bestSim >= 0.6 ? existing[bestIdx] : undefined;
+    return {
+      noveltyScore: novelty,
+      overlapWithUrl: overlap?.url,
+      overlapWithTitle: overlap?.title
+    };
+  });
+}
+
+function cosine(a: number[], b: number[]) {
+  let dot = 0;
+  let na = 0;
+  let nb = 0;
+  const len = Math.min(a.length, b.length);
+  for (let i = 0; i < len; i++) {
+    dot += a[i] * b[i];
+    na += a[i] * a[i];
+    nb += b[i] * b[i];
+  }
+  if (!na || !nb) return 0;
+  return dot / (Math.sqrt(na) * Math.sqrt(nb));
+}
+
+const STOPWORDS = new Set([
+  "a","an","and","are","as","at","be","by","for","from","has","have","in","is",
+  "it","its","of","on","or","that","the","to","was","were","will","with","you",
+  "your","this","these","those","but","not","they","their","our","we","i"
+]);
+
+function tokenSet(text: string): Set<string> {
+  return new Set(
+    text
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, " ")
+      .split(/\s+/)
+      .filter((t) => t.length > 2 && !STOPWORDS.has(t))
+  );
+}
+
+function jaccard(a: Set<string>, b: Set<string>) {
+  if (a.size === 0 || b.size === 0) return 0;
+  let inter = 0;
+  for (const t of a) if (b.has(t)) inter++;
+  const union = a.size + b.size - inter;
+  return union === 0 ? 0 : inter / union;
 }
 
 // ============================================================

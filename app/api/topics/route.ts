@@ -69,6 +69,13 @@ export const POST = withAuth(async (user, req) => {
           competitorGap: t.competitorGap ?? null,
           rankingPotential: t.rankingPotential ?? null,
           businessImpact: t.businessImpact ?? null,
+          intent: t.intent ?? null,
+          impactScore:
+            typeof t.impactScore === "number" ? t.impactScore : null,
+          noveltyScore:
+            typeof t.noveltyScore === "number" ? t.noveltyScore : null,
+          overlapWithUrl: t.overlapWithUrl ?? null,
+          overlapWithTitle: t.overlapWithTitle ?? null,
           createdByUserId: user.id
         }))
       );
@@ -97,6 +104,11 @@ function rowToTopic(r: typeof topics.$inferSelect): Topic {
     competitorGap: r.competitorGap ?? undefined,
     rankingPotential: r.rankingPotential ?? undefined,
     businessImpact: r.businessImpact ?? undefined,
+    intent: (r.intent as Topic["intent"]) ?? undefined,
+    impactScore: r.impactScore ?? undefined,
+    noveltyScore: r.noveltyScore ?? undefined,
+    overlapWithUrl: r.overlapWithUrl ?? undefined,
+    overlapWithTitle: r.overlapWithTitle ?? undefined,
     createdAt: r.createdAt.toISOString()
   };
 }

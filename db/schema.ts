@@ -86,6 +86,18 @@ export const topics = pgTable("topics", {
   competitorGap: text("competitorGap"),
   rankingPotential: text("rankingPotential"),
   businessImpact: text("businessImpact"),
+  // ── Cannibalization & impact scoring ──
+  // Structured intent ("informational" | "commercial" | "transactional" | "navigational").
+  // Separate from searchIntent (which is a free-text description) so we can filter.
+  intent: text("intent"),
+  // 0-100 — AI's confidence this topic will move the needle (search demand x brand fit x white space).
+  impactScore: integer("impactScore"),
+  // 0-100 — embedding-based score vs. existing content library + accepted topics.
+  // 100 = totally novel, 0 = identical to something we already have.
+  noveltyScore: integer("noveltyScore"),
+  // If we found a near-duplicate in the existing library, store its URL + title.
+  overlapWithUrl: text("overlapWithUrl"),
+  overlapWithTitle: text("overlapWithTitle"),
   createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
   // No FK reference here so credentials-auth users (which aren't written to
   // the users table on every sign-in) can still create topics.
@@ -149,6 +161,49 @@ export const competitors = pgTable("competitors", {
   name: text("name").default("").notNull(),
   url: text("url").default("").notNull(),
   notes: text("notes").default("").notNull(),
+  // "primary" | "secondary" | "watch" — controls how heavily the AI weights
+  // this competitor in prompts. Primary = beat them directly; Watch = track only.
+  tier: text("tier").default("secondary").notNull(),
+  createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull()
+});
+
+// ───────────────────────── Keyword bank ─────────────────────────
+// First-class entity (independent of topics) for priority targeting.
+
+export const keywords = pgTable("keywords", {
+  id: text("id").primaryKey(),
+  keyword: text("keyword").notNull(),
+  // "P0" (must-target) | "P1" (nice-to-have) | "P2" (watchlist)
+  priority: text("priority").default("P1").notNull(),
+  // "informational" | "commercial" | "transactional" | "navigational"
+  intent: text("intent").default("informational").notNull(),
+  // "targeting" | "ranking" | "won" | "abandoned"
+  status: text("status").default("targeting").notNull(),
+  // Optional manual entry. We don't fetch this from a SERP API in v1.
+  searchVolume: integer("searchVolume"),
+  difficulty: integer("difficulty"),
+  // Once published, the URL we ended up targeting it with.
+  targetUrl: text("targetUrl"),
+  notes: text("notes").default("").notNull(),
+  createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt", { mode: "date" }).defaultNow().notNull()
+});
+
+// ───────────────────────── Existing content library ─────────────────────────
+// Everything we've already published. Used for cannibalization checks.
+
+export const existingContent = pgTable("existingContent", {
+  id: text("id").primaryKey(),
+  url: text("url").notNull(),
+  title: text("title").notNull(),
+  targetKeyword: text("targetKeyword").default("").notNull(),
+  // Optional intent tag; aligns with keyword.intent values.
+  intent: text("intent").default("").notNull(),
+  publishedDate: timestamp("publishedDate", { mode: "date" }),
+  notes: text("notes").default("").notNull(),
+  // Cached embedding (jsonb-encoded array of numbers) so we don't recompute
+  // for every generation. Null until first embedding pass.
+  embedding: jsonb("embedding"),
   createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull()
 });
 
@@ -164,3 +219,5 @@ export type DbTopic = typeof topics.$inferSelect;
 export type DbTask = typeof tasks.$inferSelect;
 export type DbSettings = typeof settings.$inferSelect;
 export type DbCompetitor = typeof competitors.$inferSelect;
+export type DbKeyword = typeof keywords.$inferSelect;
+export type DbExistingContent = typeof existingContent.$inferSelect;

@@ -25,42 +25,68 @@ import type { PrimaryProvider } from "@/lib/types";
 
 // Curated model lists shown in dropdowns. Users can still type a custom
 // model name via the "Custom…" option if their account supports a model
-// that isn't in this list. Listed roughly by quality — top first, budget at
-// the bottom.
+// that isn't in this list. Listed newest-first inside each family.
+//
+// As of May 2026: OpenAI's $5-trial free credits are gone, but new accounts
+// get a small free tier on GPT-4o-mini / GPT-3.5 / GPT-5.x-nano. Gemini's
+// free tier (May 2026) covers 2.5 Flash, 2.5 Flash-Lite, 3 Flash, and
+// 3.1 Flash-Lite — those are flagged "free-tier" below.
 const OPENAI_MODELS = [
+  // ── GPT-5.4 family (newest, May 2026) ──
+  { value: "gpt-5.4", label: "GPT-5.4 — newest flagship (paid)" },
+  { value: "gpt-5.4-mini", label: "GPT-5.4 mini — balanced, cheap" },
+  { value: "gpt-5.4-nano", label: "GPT-5.4 nano — smallest, lowest cost (recommended for cost)" },
+
+  // ── GPT-5 family ──
+  { value: "gpt-5", label: "GPT-5 — flagship" },
+  { value: "gpt-5-mini", label: "GPT-5 mini — balanced" },
+  { value: "gpt-5-nano", label: "GPT-5 nano — cheapest GPT-5" },
+
   // ── GPT-4.1 family ──
-  { value: "gpt-4.1", label: "GPT-4.1 — highest quality" },
+  { value: "gpt-4.1", label: "GPT-4.1 — high quality" },
   { value: "gpt-4.1-mini", label: "GPT-4.1 mini — balanced" },
-  { value: "gpt-4.1-nano", label: "GPT-4.1 nano — smallest 4.1, lowest cost" },
+  { value: "gpt-4.1-nano", label: "GPT-4.1 nano — very cheap" },
 
   // ── GPT-4o family ──
   { value: "gpt-4o", label: "GPT-4o — high quality" },
-  { value: "gpt-4o-mini", label: "GPT-4o mini — fast, cheap (recommended)" },
+  { value: "gpt-4o-mini", label: "GPT-4o mini — free-tier friendly (recommended)" },
 
   // ── Reasoning (o-series) ──
+  { value: "o3", label: "o3 — reasoning, full" },
   { value: "o4-mini", label: "o4 mini — reasoning" },
   { value: "o3-mini", label: "o3 mini — reasoning, smaller" },
   { value: "o1-mini", label: "o1 mini — reasoning, legacy" },
 
-  // ── GPT-3.5 (budget / legacy) ──
-  { value: "gpt-3.5-turbo", label: "GPT-3.5 Turbo — budget" },
+  // ── GPT-3.5 (budget / legacy free-tier) ──
+  { value: "gpt-3.5-turbo", label: "GPT-3.5 Turbo — free-tier (3 RPM limit)" },
   { value: "gpt-3.5-turbo-0125", label: "GPT-3.5 Turbo 0125 — pinned" },
   { value: "gpt-3.5-turbo-1106", label: "GPT-3.5 Turbo 1106 — pinned" },
   { value: "gpt-3.5-turbo-instruct", label: "GPT-3.5 Turbo Instruct — legacy completion" }
 ];
 
-// Listed by generation, newest first. Availability varies by API key region
+// Listed newest-first by generation. Availability varies by API key region
 // and Google account — if the picked model returns "Model not available," try
-// another variant.
+// another variant. As of May 2026, free tier covers 2.5 Flash, 2.5 Flash-Lite,
+// 3 Flash, and 3.1 Flash-Lite (Pro tiers are paid-only since April 2026).
 const GEMINI_MODELS = [
+  // ── Gemini 3.5 (newest — launched at Google I/O May 2026) ──
+  { value: "gemini-3.5-flash", label: "Gemini 3.5 Flash — newest, 1M context (recommended)" },
+
+  // ── Gemini 3.1 ──
+  { value: "gemini-3.1-pro", label: "Gemini 3.1 Pro — flagship reasoning (paid)" },
+  { value: "gemini-3.1-flash-lite", label: "Gemini 3.1 Flash Lite — free-tier, cheapest 3.x" },
+
+  // ── Gemini 3 ──
+  { value: "gemini-3-flash", label: "Gemini 3 Flash — free-tier, balanced" },
+
   // ── Gemini 2.5 ──
-  { value: "gemini-2.5-pro", label: "Gemini 2.5 Pro — highest quality" },
-  { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash — fast, high quality" },
-  { value: "gemini-2.5-flash-lite", label: "Gemini 2.5 Flash Lite — fastest, lowest cost" },
+  { value: "gemini-2.5-pro", label: "Gemini 2.5 Pro — high quality (paid since Apr 2026)" },
+  { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash — free-tier, fast" },
+  { value: "gemini-2.5-flash-lite", label: "Gemini 2.5 Flash Lite — free-tier, fastest" },
   { value: "gemini-2.5-flash-lite-preview", label: "Gemini 2.5 Flash Lite (preview)" },
 
   // ── Gemini 2.0 ──
-  { value: "gemini-2.0-flash", label: "Gemini 2.0 Flash — free-tier friendly (recommended)" },
+  { value: "gemini-2.0-flash", label: "Gemini 2.0 Flash — free-tier friendly" },
   { value: "gemini-2.0-flash-exp", label: "Gemini 2.0 Flash (experimental)" },
   { value: "gemini-2.0-flash-lite", label: "Gemini 2.0 Flash Lite — budget" },
   { value: "gemini-2.0-flash-lite-001", label: "Gemini 2.0 Flash Lite 001 — pinned" },

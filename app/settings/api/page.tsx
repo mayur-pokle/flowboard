@@ -15,7 +15,10 @@ import {
   Search,
   Plus,
   ExternalLink,
-  AlertTriangle
+  AlertTriangle,
+  Sparkles,
+  ChevronDown,
+  ChevronUp
 } from "lucide-react";
 import { useStore, useHasHydrated } from "@/lib/store";
 import { Button } from "@/components/ui/Button";
@@ -72,8 +75,8 @@ const GEMINI_MODELS = [
   // ── Gemini 3.5 (newest — launched at Google I/O May 2026) ──
   { value: "gemini-3.5-flash", label: "Gemini 3.5 Flash — newest, 1M context (recommended)" },
 
-  // ── Gemini 3.1 ──
-  { value: "gemini-3.1-pro", label: "Gemini 3.1 Pro — flagship reasoning (paid)" },
+  // ── Gemini 3.1 (preview models) ──
+  { value: "gemini-3.1-pro-preview", label: "Gemini 3.1 Pro Preview — flagship reasoning (paid)" },
   { value: "gemini-3.1-flash-lite", label: "Gemini 3.1 Flash Lite — free-tier, cheapest 3.x" },
 
   // ── Gemini 3 ──
@@ -704,10 +707,13 @@ export default function SettingsApiPage() {
                 }
               }}
               fallback="gpt-4o-mini"
+              discoverEndpoint="/api/list-models/openai"
+              providerLabel="OpenAI"
             />
             <Hint>
               Set <code>OPENAI_API_KEY</code> in Vercel → Project → Environment
-              Variables to enable.
+              Variables to enable. Use <strong>Discover</strong> to see which
+              models your key can actually access.
             </Hint>
           </div>
 
@@ -745,11 +751,13 @@ export default function SettingsApiPage() {
                 }
               }}
               fallback="gemini-2.0-flash"
+              discoverEndpoint="/api/list-models/gemini"
+              providerLabel="Gemini"
             />
             <Hint>
-              Set <code>GEMINI_API_KEY</code> in Vercel. If you see "Model not
-              available," try a different model — availability varies by
-              account region.
+              Set <code>GEMINI_API_KEY</code> in Vercel. If you see &quot;Model
+              not available,&quot; click <strong>Discover</strong> to see the
+              exact list of models your key can use, then pick one.
             </Hint>
           </div>
         </Card>
@@ -977,64 +985,190 @@ function ProviderOption({
   );
 }
 
+interface DiscoveredModel {
+  id: string;
+  displayName?: string;
+  description?: string;
+}
+
 function ModelSelect({
   value,
   options,
   onChange,
-  fallback
+  fallback,
+  discoverEndpoint,
+  providerLabel
 }: {
   value: string;
   options: { value: string; label: string }[];
   onChange: (next: string) => void;
   fallback: string;
+  // If provided, shows a "Discover" button that fetches the live list of
+  // available models for the configured server-side API key.
+  discoverEndpoint?: string;
+  providerLabel?: string;
 }) {
   const isKnown = options.some((o) => o.value === value);
   const showCustom = !isKnown && value !== "";
   const [customMode, setCustomMode] = useState(showCustom);
 
+  // ── Discover panel state ──
+  const [discoverOpen, setDiscoverOpen] = useState(false);
+  const [discovering, setDiscovering] = useState(false);
+  const [discovered, setDiscovered] = useState<DiscoveredModel[] | null>(null);
+  const [discoverError, setDiscoverError] = useState<string | null>(null);
+
+  async function runDiscover() {
+    if (!discoverEndpoint) return;
+    setDiscovering(true);
+    setDiscoverError(null);
+    setDiscoverOpen(true);
+    try {
+      const res = await fetch(discoverEndpoint);
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data?.error || `HTTP ${res.status}`);
+      }
+      setDiscovered(Array.isArray(data?.models) ? data.models : []);
+    } catch (err) {
+      setDiscoverError((err as Error).message);
+      setDiscovered(null);
+    } finally {
+      setDiscovering(false);
+    }
+  }
+
   return (
     <div>
-      {!customMode ? (
-        <select
-          className="input"
-          value={isKnown ? value : ""}
-          onChange={(e) => {
-            const next = e.target.value;
-            if (next === "__custom__") {
-              setCustomMode(true);
-              return;
-            }
-            onChange(next || fallback);
-          }}
-        >
-          {options.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-          <option value="__custom__">Custom…</option>
-        </select>
-      ) : (
-        <div className="flex gap-2">
-          <input
-            className="input font-mono text-sm"
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
-            placeholder={fallback}
-            autoFocus
-          />
+      <div className="flex items-stretch gap-2">
+        {!customMode ? (
+          <select
+            className="input flex-1"
+            value={isKnown ? value : ""}
+            onChange={(e) => {
+              const next = e.target.value;
+              if (next === "__custom__") {
+                setCustomMode(true);
+                return;
+              }
+              onChange(next || fallback);
+            }}
+          >
+            {options.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+            <option value="__custom__">Custom…</option>
+          </select>
+        ) : (
+          <div className="flex gap-2 flex-1">
+            <input
+              className="input font-mono text-sm flex-1"
+              value={value}
+              onChange={(e) => onChange(e.target.value)}
+              placeholder={fallback}
+              autoFocus
+            />
+            <button
+              type="button"
+              onClick={() => {
+                onChange(fallback);
+                setCustomMode(false);
+              }}
+              className="text-xs text-ink-500 hover:text-ink-800 px-2"
+            >
+              ← list
+            </button>
+          </div>
+        )}
+        {discoverEndpoint ? (
           <button
             type="button"
             onClick={() => {
-              onChange(fallback);
-              setCustomMode(false);
+              if (discoverOpen && discovered) {
+                setDiscoverOpen(false);
+              } else {
+                runDiscover();
+              }
             }}
-            className="text-xs text-ink-500 hover:text-ink-800 px-2"
+            className="btn btn-secondary shrink-0"
+            title={`Fetch the live list of models your ${providerLabel || "provider"} key can access`}
           >
-            ← list
+            <Sparkles className="size-4" />
+            {discoverOpen && discovered ? (
+              <>
+                Hide list <ChevronUp className="size-3.5" />
+              </>
+            ) : (
+              <>
+                Discover <ChevronDown className="size-3.5" />
+              </>
+            )}
           </button>
+        ) : null}
+      </div>
+
+      {/* Discover results panel */}
+      {discoverOpen ? (
+        <div className="mt-2 rounded-md border border-ink-200 bg-ink-50/60 p-3 max-h-72 overflow-y-auto scrollbar-thin">
+          {discovering ? (
+            <div className="text-xs text-ink-500">
+              Fetching available models from {providerLabel}…
+            </div>
+          ) : discoverError ? (
+            <div className="text-xs text-rose-700">
+              <div className="font-medium mb-1">Could not fetch models</div>
+              <div className="text-rose-600">{discoverError}</div>
+              <p className="text-ink-600 mt-2">
+                Check that your <code>{providerLabel === "OpenAI" ? "OPENAI_API_KEY" : "GEMINI_API_KEY"}</code> is set in Vercel and valid.
+              </p>
+            </div>
+          ) : discovered && discovered.length > 0 ? (
+            <>
+              <div className="text-[11px] text-ink-500 mb-2">
+                {discovered.length} model{discovered.length === 1 ? "" : "s"}{" "}
+                available for your key. Click one to use it.
+              </div>
+              <ul className="space-y-1">
+                {discovered.map((m) => (
+                  <li
+                    key={m.id}
+                    className="flex items-center justify-between gap-2 py-1 px-1.5 rounded hover:bg-white"
+                  >
+                    <div className="min-w-0">
+                      <div className="font-mono text-xs text-ink-900 truncate">
+                        {m.id}
+                      </div>
+                      {m.displayName && m.displayName !== m.id ? (
+                        <div className="text-[11px] text-ink-500 truncate">
+                          {m.displayName}
+                        </div>
+                      ) : null}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onChange(m.id);
+                        setCustomMode(true);
+                        setDiscoverOpen(false);
+                      }}
+                      className="text-[11px] font-medium text-brand-700 hover:text-brand-800 px-2 py-1 rounded hover:bg-brand-50 shrink-0"
+                    >
+                      Use this
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : (
+            <div className="text-xs text-ink-500">
+              No models returned. Your key may not be authorized for any
+              generation models.
+            </div>
+          )}
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

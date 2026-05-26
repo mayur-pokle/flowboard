@@ -424,7 +424,7 @@ export default function IdeasPage() {
             }
           />
         ) : (
-          <div className="grid gap-4 grid-cols-1 md:grid-cols-2 xl:grid-cols-3">
+          <div className="flex flex-col gap-3 max-w-5xl">
             {filtered.map((topic) => (
               <TopicCard
                 key={topic.id}

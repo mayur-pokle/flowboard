@@ -139,12 +139,33 @@ export default function SettingsApiPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hydrated]);
 
-  async function save() {
+  // ── Per-section save handlers ───────────────────────────────────
+  // Each section that has multiple text inputs gets its own Save button so
+  // users can commit one block at a time. Competitors and AI providers
+  // already autosave per change, so no Save button there.
+
+  const brandProfileDirty =
+    companyName.trim() !== settings.companyName ||
+    websiteUrl.trim() !== settings.websiteUrl ||
+    niche.trim() !== settings.brandNiche ||
+    audience.trim() !== settings.brandAudience ||
+    productDescription.trim() !== settings.productDescription ||
+    valueProposition.trim() !== settings.valueProposition ||
+    brandVoice.trim() !== settings.brandVoice ||
+    primaryCta.trim() !== settings.primaryCta ||
+    primaryGeo.trim() !== settings.primaryGeo;
+
+  const seoSeedDirty =
+    seedKeywords.trim() !== settings.seedKeywords ||
+    topicsToAvoid.trim() !== settings.topicsToAvoid;
+
+  const [savingBrandProfile, setSavingBrandProfile] = useState(false);
+  const [savingSeoSeed, setSavingSeoSeed] = useState(false);
+
+  async function saveBrandProfile() {
+    setSavingBrandProfile(true);
     try {
       await updateSettings({
-        openaiModel: openaiModel.trim() || "gpt-4o-mini",
-        geminiModel: geminiModel.trim() || "gemini-2.0-flash",
-        primaryProvider,
         companyName: companyName.trim(),
         websiteUrl: websiteUrl.trim(),
         brandNiche: niche.trim(),
@@ -153,13 +174,28 @@ export default function SettingsApiPage() {
         valueProposition: valueProposition.trim(),
         brandVoice: brandVoice.trim(),
         primaryCta: primaryCta.trim(),
-        primaryGeo: primaryGeo.trim(),
+        primaryGeo: primaryGeo.trim()
+      });
+      toast("Brand profile saved", "success");
+    } catch (err) {
+      toast((err as Error).message, "error");
+    } finally {
+      setSavingBrandProfile(false);
+    }
+  }
+
+  async function saveSeoSeed() {
+    setSavingSeoSeed(true);
+    try {
+      await updateSettings({
         seedKeywords: seedKeywords.trim(),
         topicsToAvoid: topicsToAvoid.trim()
       });
-      toast("Settings saved", "success");
+      toast("SEO seed saved", "success");
     } catch (err) {
       toast((err as Error).message, "error");
+    } finally {
+      setSavingSeoSeed(false);
     }
   }
 
@@ -254,6 +290,17 @@ export default function SettingsApiPage() {
           icon={Building2}
           title="Brand profile"
           description="Who you are, what you sell, and who you sell to. Fed into every AI generation."
+          right={
+            <Button
+              variant="primary"
+              onClick={saveBrandProfile}
+              loading={savingBrandProfile}
+              disabled={!brandProfileDirty}
+            >
+              <Save className="size-4" />
+              Save
+            </Button>
+          }
         >
           <Row>
             <Field label="Company name">
@@ -498,6 +545,17 @@ export default function SettingsApiPage() {
           icon={Search}
           title="SEO seed"
           description="Optional starter keywords and topics to avoid. Comma- or newline-separated."
+          right={
+            <Button
+              variant="primary"
+              onClick={saveSeoSeed}
+              loading={savingSeoSeed}
+              disabled={!seoSeedDirty}
+            >
+              <Save className="size-4" />
+              Save
+            </Button>
+          }
         >
           <Field label="Seed keywords">
             <textarea
@@ -751,16 +809,8 @@ export default function SettingsApiPage() {
         {/* Shared workspace — bulk clear isn't exposed in the UI. */}
         {/* If you need to reset state, use `npm run db:push` after dropping tables. */}
 
-        <div className="sticky bottom-4 flex justify-end pt-2 pb-12">
-          <Button
-            variant="primary"
-            onClick={save}
-            className="shadow-cardHover"
-          >
-            <Save className="size-4" />
-            Save changes
-          </Button>
-        </div>
+        {/* Bottom padding so the last section isn't flush against the scroll edge. */}
+        <div className="pb-12" />
       </div>
     </div>
   );

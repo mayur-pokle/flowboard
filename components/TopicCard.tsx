@@ -40,82 +40,103 @@ export function TopicCard({
   const novelty = topic.noveltyScore;
 
   return (
-    <div className="card p-4 hover:shadow-cardHover transition">
-      <div className="flex items-start gap-3">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap mb-1.5">
-            <TypeBadge value={topic.contentType} />
-            <PriorityBadge value={topic.priority} />
-            {topic.intent ? (
-              <Badge tone="neutral" className="capitalize">
-                {topic.intent}
-              </Badge>
-            ) : null}
-            <Badge tone="neutral">Effort: {topic.estimatedEffort}</Badge>
-            <Badge tone={scoreTone(impact)} className="gap-1">
-              <Sparkles className="size-3" />
-              Impact {impact}
-            </Badge>
-            {typeof novelty === "number" ? (
-              <Badge tone={scoreTone(novelty)}>Novelty {novelty}</Badge>
-            ) : null}
-          </div>
-          <h3 className="text-[15px] font-semibold text-ink-900 leading-snug">
-            {topic.title}
-          </h3>
-          <div className="text-xs text-ink-500 mt-1 flex items-center gap-1.5">
-            <Target className="size-3.5" />
-            <span className="font-mono">{topic.targetKeyword}</span>
-            <span className="text-ink-300">·</span>
-            <span>{topic.searchIntent}</span>
-          </div>
-          {topic.overlapWithUrl ? (
-            <div className="mt-2 flex items-start gap-1.5 rounded-md border border-amber-200 bg-amber-50/60 px-2.5 py-1.5 text-[12px] text-amber-900">
-              <AlertTriangle className="size-3.5 shrink-0 mt-0.5 text-amber-600" />
-              <div className="min-w-0">
-                Possible overlap with existing content:{" "}
-                <a
-                  href={topic.overlapWithUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="font-medium underline decoration-amber-400 hover:decoration-amber-700 break-all"
-                >
-                  {topic.overlapWithTitle || topic.overlapWithUrl}
-                </a>
-                <ExternalLink className="size-3 inline ml-0.5" />
-              </div>
-            </div>
-          ) : null}
-          <p className="text-sm text-ink-600 mt-2 leading-relaxed line-clamp-2">
-            {topic.whyOpportunity}
-          </p>
-        </div>
+    <div className="card p-4 hover:shadow-cardHover transition flex flex-col h-full">
+      {/* 1. Tags row */}
+      <div className="flex items-center gap-1.5 flex-wrap mb-3">
+        <TypeBadge value={topic.contentType} />
+        <PriorityBadge value={topic.priority} />
+        {topic.intent ? (
+          <Badge tone="neutral" className="capitalize">
+            {topic.intent}
+          </Badge>
+        ) : null}
+        <Badge tone="neutral">Effort: {topic.estimatedEffort}</Badge>
+        <Badge tone={scoreTone(impact)} className="gap-1">
+          <Sparkles className="size-3" />
+          {impact}
+        </Badge>
+        {typeof novelty === "number" ? (
+          <Badge tone={scoreTone(novelty)}>Novelty {novelty}</Badge>
+        ) : null}
+      </div>
 
-        <div className="flex items-center gap-1 shrink-0">
-          <Button
-            variant="ghost"
-            onClick={() => setPreviewOpen(true)}
-            aria-label="Preview"
-          >
-            <Eye className="size-4" />
-          </Button>
-          <Button
-            variant="primary"
-            onClick={onMove}
-            className="!py-1.5 !px-2.5"
-          >
-            <Plus className="size-4" />
-            Move to Kanban
-          </Button>
-          <Button
-            variant="ghost"
-            onClick={onDelete}
-            aria-label="Delete"
-            className="!text-ink-400 hover:!text-rose-600"
-          >
-            <Trash2 className="size-4" />
-          </Button>
+      {/* 2. Title */}
+      <h3 className="text-base font-semibold text-ink-900 leading-snug mb-2 line-clamp-2">
+        {topic.title}
+      </h3>
+
+      {/* 3. Description */}
+      <p className="text-sm text-ink-600 leading-relaxed line-clamp-3 mb-3">
+        {topic.whyOpportunity}
+      </p>
+
+      {/* Overlap warning, when present */}
+      {topic.overlapWithUrl ? (
+        <div className="mb-3 flex items-start gap-1.5 rounded-md border border-amber-200 bg-amber-50/60 px-2.5 py-1.5 text-[11px] text-amber-900">
+          <AlertTriangle className="size-3 shrink-0 mt-0.5 text-amber-600" />
+          <div className="min-w-0">
+            Overlap:{" "}
+            <a
+              href={topic.overlapWithUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-medium underline decoration-amber-400 hover:decoration-amber-700 break-all"
+            >
+              {topic.overlapWithTitle || topic.overlapWithUrl}
+            </a>
+            <ExternalLink className="size-2.5 inline ml-0.5" />
+          </div>
         </div>
+      ) : null}
+
+      {/* Spacer pushes meta + CTAs to bottom so cards stay aligned in the grid */}
+      <div className="flex-1" />
+
+      {/* 4. Target keyword */}
+      <div className="flex items-center gap-1.5 text-xs text-ink-600 mb-1.5 min-w-0">
+        <Target className="size-3.5 shrink-0 text-ink-400" />
+        <span
+          className="font-mono truncate"
+          title={topic.targetKeyword}
+        >
+          {topic.targetKeyword}
+        </span>
+      </div>
+
+      {/* 5. Search intent */}
+      <div className="flex items-center gap-1.5 text-xs text-ink-500 mb-3 min-w-0">
+        <Lightbulb className="size-3.5 shrink-0 text-ink-400" />
+        <span className="truncate" title={topic.searchIntent}>
+          {topic.searchIntent}
+        </span>
+      </div>
+
+      {/* 6. CTAs */}
+      <div className="flex items-center gap-1.5 pt-3 border-t border-ink-100">
+        <Button
+          variant="primary"
+          onClick={onMove}
+          className="!py-1.5 !px-2.5 flex-1"
+        >
+          <Plus className="size-4" />
+          Move to Kanban
+        </Button>
+        <Button
+          variant="secondary"
+          onClick={() => setPreviewOpen(true)}
+          aria-label="Preview"
+          className="!py-1.5 !px-2.5"
+        >
+          <Eye className="size-4" />
+        </Button>
+        <Button
+          variant="ghost"
+          onClick={onDelete}
+          aria-label="Delete"
+          className="!py-1.5 !px-2.5 !text-ink-400 hover:!text-rose-600"
+        >
+          <Trash2 className="size-4" />
+        </Button>
       </div>
 
       {previewOpen && (

@@ -76,7 +76,7 @@ export function KanbanBoard({
       </div>
       <DragOverlay>
         {activeTask ? (
-          <div className="w-[280px]">
+          <div className="w-[360px]">
             <KanbanCard task={activeTask} isDragOverlay />
           </div>
         ) : null}

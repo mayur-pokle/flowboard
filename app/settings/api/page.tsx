@@ -299,7 +299,7 @@ export default function SettingsApiPage() {
         }
       />
 
-      <div className="flex-1 overflow-auto scrollbar-thin px-8 py-6 max-w-3xl">
+      <div className="flex-1 overflow-auto scrollbar-thin px-8 py-6 max-w-5xl w-full">
         {profileCompleteness < 50 ? (
           <div className="card p-4 mb-5 border-amber-200 bg-amber-50/60 flex gap-3">
             <AlertTriangle className="size-5 text-amber-600 shrink-0 mt-0.5" />
@@ -586,24 +586,26 @@ export default function SettingsApiPage() {
             </Button>
           }
         >
-          <Field label="Seed keywords">
-            <textarea
-              className="input min-h-[64px] font-mono text-xs"
-              value={seedKeywords}
-              onChange={(e) => setSeedKeywords(e.target.value)}
-              placeholder="month-end close, accrual automation, finance close software"
-            />
-            <Hint>The AI expands and combines these. Aim for 3-10 head terms.</Hint>
-          </Field>
-          <Field label="Topics / themes to avoid">
-            <textarea
-              className="input min-h-[64px] font-mono text-xs"
-              value={topicsToAvoid}
-              onChange={(e) => setTopicsToAvoid(e.target.value)}
-              placeholder="cryptocurrency, personal finance, payroll"
-            />
-            <Hint>Anything off-strategy or misaligned with your audience.</Hint>
-          </Field>
+          <Row>
+            <Field label="Seed keywords">
+              <textarea
+                className="input min-h-[100px] font-mono text-xs"
+                value={seedKeywords}
+                onChange={(e) => setSeedKeywords(e.target.value)}
+                placeholder="month-end close, accrual automation, finance close software"
+              />
+              <Hint>The AI expands and combines these. Aim for 3-10 head terms.</Hint>
+            </Field>
+            <Field label="Topics / themes to avoid">
+              <textarea
+                className="input min-h-[100px] font-mono text-xs"
+                value={topicsToAvoid}
+                onChange={(e) => setTopicsToAvoid(e.target.value)}
+                placeholder="cryptocurrency, personal finance, payroll"
+              />
+              <Hint>Anything off-strategy or misaligned with your audience.</Hint>
+            </Field>
+          </Row>
         </Card>
 
         {/* ───────────── AI providers ───────────── */}
@@ -673,172 +675,173 @@ export default function SettingsApiPage() {
             </Hint>
           </Field>
 
-          {/* OpenAI card */}
-          <div className="rounded-md border border-ink-200 bg-ink-50/60 p-3 mt-4">
-            <div className="flex items-center justify-between mb-2">
-              <div className="text-xs font-medium text-ink-700">OpenAI</div>
-              {serverConfigured.openaiKey ? (
-                <Badge tone="success">
-                  <CheckCircle2 className="size-3" />
-                  Key configured
-                </Badge>
-              ) : (
-                <Badge tone="neutral">
-                  <XCircle className="size-3" />
-                  Key not set
-                </Badge>
-              )}
-            </div>
-            <label className="text-xs font-medium text-ink-700 mb-1.5 block">
-              Model
-            </label>
-            <ModelSelect
-              value={openaiModel}
-              options={OPENAI_MODELS}
-              onChange={async (v) => {
-                setOpenaiModel(v);
-                if (v !== settings.openaiModel) {
-                  try {
-                    await updateSettings({ openaiModel: v });
-                    toast(`OpenAI model set to ${v}`, "success");
-                  } catch (err) {
-                    toast((err as Error).message, "error");
-                  }
-                }
-              }}
-              fallback="gpt-4o-mini"
-              discoverEndpoint="/api/list-models/openai"
-              providerLabel="OpenAI"
-            />
-            <Hint>
-              Set <code>OPENAI_API_KEY</code> in Vercel → Project → Environment
-              Variables to enable. Use <strong>Discover</strong> to see which
-              models your key can actually access.
-            </Hint>
-          </div>
-
-          {/* Gemini card */}
-          <div className="rounded-md border border-ink-200 bg-ink-50/60 p-3 mt-3">
-            <div className="flex items-center justify-between mb-2">
-              <div className="text-xs font-medium text-ink-700">Gemini</div>
-              {serverConfigured.geminiKey ? (
-                <Badge tone="success">
-                  <CheckCircle2 className="size-3" />
-                  Key configured
-                </Badge>
-              ) : (
-                <Badge tone="neutral">
-                  <XCircle className="size-3" />
-                  Key not set
-                </Badge>
-              )}
-            </div>
-            <label className="text-xs font-medium text-ink-700 mb-1.5 block">
-              Model
-            </label>
-            <ModelSelect
-              value={geminiModel}
-              options={GEMINI_MODELS}
-              onChange={async (v) => {
-                setGeminiModel(v);
-                if (v !== settings.geminiModel) {
-                  try {
-                    await updateSettings({ geminiModel: v });
-                    toast(`Gemini model set to ${v}`, "success");
-                  } catch (err) {
-                    toast((err as Error).message, "error");
-                  }
-                }
-              }}
-              fallback="gemini-2.0-flash"
-              discoverEndpoint="/api/list-models/gemini"
-              providerLabel="Gemini"
-            />
-            <Hint>
-              Set <code>GEMINI_API_KEY</code> in Vercel. If you see &quot;Model
-              not available,&quot; click <strong>Discover</strong> to see the
-              exact list of models your key can use, then pick one.
-            </Hint>
-          </div>
-        </Card>
-
-        {/* ───────────── Slack ───────────── */}
-        <Card
-          icon={Send}
-          title="Slack integration"
-          description="The weekly Slack post is sent server-side using your workspace's Incoming Webhook."
-        >
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-xs font-medium text-ink-700 mb-0.5">
-                Webhook
+          {/* OpenAI + Gemini side-by-side */}
+          <div className="grid lg:grid-cols-2 gap-3 mt-4">
+            {/* OpenAI card */}
+            <div className="rounded-md border border-ink-200 bg-ink-50/60 p-3">
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-xs font-medium text-ink-700">OpenAI</div>
+                {serverConfigured.openaiKey ? (
+                  <Badge tone="success">
+                    <CheckCircle2 className="size-3" />
+                    Key set
+                  </Badge>
+                ) : (
+                  <Badge tone="neutral">
+                    <XCircle className="size-3" />
+                    Key not set
+                  </Badge>
+                )}
               </div>
+              <label className="text-xs font-medium text-ink-700 mb-1.5 block">
+                Model
+              </label>
+              <ModelSelect
+                value={openaiModel}
+                options={OPENAI_MODELS}
+                onChange={async (v) => {
+                  setOpenaiModel(v);
+                  if (v !== settings.openaiModel) {
+                    try {
+                      await updateSettings({ openaiModel: v });
+                      toast(`OpenAI model set to ${v}`, "success");
+                    } catch (err) {
+                      toast((err as Error).message, "error");
+                    }
+                  }
+                }}
+                fallback="gpt-4o-mini"
+                discoverEndpoint="/api/list-models/openai"
+                providerLabel="OpenAI"
+              />
               <Hint>
-                Set <code>SLACK_WEBHOOK_URL</code> in Vercel → Project →
-                Environment Variables. Create the webhook at{" "}
-                api.slack.com/messaging/webhooks.
+                Set <code>OPENAI_API_KEY</code> in Vercel env. Use{" "}
+                <strong>Discover</strong> to list what your key supports.
               </Hint>
             </div>
-            {serverConfigured.slackWebhook ? (
-              <Badge tone="success">
-                <CheckCircle2 className="size-3" />
-                Configured
-              </Badge>
-            ) : (
-              <Badge tone="neutral">
-                <XCircle className="size-3" />
-                Not configured
-              </Badge>
-            )}
-          </div>
-          {serverConfigured.slackWebhook ? (
-            <div className="flex items-center gap-2 mt-3">
-              <Button
-                variant="secondary"
-                loading={testingSlack}
-                onClick={testSlack}
-              >
-                <Send className="size-4" />
-                Send test message
-              </Button>
+
+            {/* Gemini card */}
+            <div className="rounded-md border border-ink-200 bg-ink-50/60 p-3">
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-xs font-medium text-ink-700">Gemini</div>
+                {serverConfigured.geminiKey ? (
+                  <Badge tone="success">
+                    <CheckCircle2 className="size-3" />
+                    Key set
+                  </Badge>
+                ) : (
+                  <Badge tone="neutral">
+                    <XCircle className="size-3" />
+                    Key not set
+                  </Badge>
+                )}
+              </div>
+              <label className="text-xs font-medium text-ink-700 mb-1.5 block">
+                Model
+              </label>
+              <ModelSelect
+                value={geminiModel}
+                options={GEMINI_MODELS}
+                onChange={async (v) => {
+                  setGeminiModel(v);
+                  if (v !== settings.geminiModel) {
+                    try {
+                      await updateSettings({ geminiModel: v });
+                      toast(`Gemini model set to ${v}`, "success");
+                    } catch (err) {
+                      toast((err as Error).message, "error");
+                    }
+                  }
+                }}
+                fallback="gemini-2.0-flash"
+                discoverEndpoint="/api/list-models/gemini"
+                providerLabel="Gemini"
+              />
+              <Hint>
+                Set <code>GEMINI_API_KEY</code> in Vercel. On &quot;Model not
+                available,&quot; click <strong>Discover</strong>.
+              </Hint>
             </div>
-          ) : null}
+          </div>
         </Card>
 
-        {/* ───────────── Server defaults ───────────── */}
-        <Card
-          title="Server-side defaults"
-          description="These take priority over keys saved here. Set them in your hosting provider for production."
-        >
-          <ul className="text-sm text-ink-700 grid sm:grid-cols-2 gap-x-4 gap-y-1.5">
-            {[
-              "OPENAI_API_KEY",
-              "OPENAI_MODEL",
-              "GEMINI_API_KEY",
-              "GEMINI_MODEL",
-              "SLACK_WEBHOOK_URL",
-              "BRAND_COMPANY_NAME",
-              "BRAND_WEBSITE_URL",
-              "BRAND_NICHE",
-              "BRAND_AUDIENCE",
-              "BRAND_PRODUCT_DESCRIPTION",
-              "BRAND_VALUE_PROPOSITION",
-              "BRAND_VOICE",
-              "BRAND_PRIMARY_CTA",
-              "BRAND_PRIMARY_GEO",
-              "BRAND_COMPETITORS",
-              "BRAND_SEED_KEYWORDS",
-              "BRAND_TOPICS_TO_AVOID",
-              "CRON_SECRET"
-            ].map((k) => (
-              <li key={k}>
-                <code className="bg-ink-100 px-1.5 py-0.5 rounded text-[11px]">
-                  {k}
-                </code>
-              </li>
-            ))}
-          </ul>
-        </Card>
+        {/* ───────────── Slack + Server defaults side-by-side ───────────── */}
+        <div className="grid lg:grid-cols-2 gap-4 mb-4">
+          <Card
+            icon={Send}
+            title="Slack integration"
+            description="Weekly Slack post via Incoming Webhook."
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-xs font-medium text-ink-700 mb-0.5">
+                  Webhook
+                </div>
+                <Hint>
+                  Set <code>SLACK_WEBHOOK_URL</code> in Vercel env. Create at{" "}
+                  api.slack.com/messaging/webhooks.
+                </Hint>
+              </div>
+              {serverConfigured.slackWebhook ? (
+                <Badge tone="success">
+                  <CheckCircle2 className="size-3" />
+                  Configured
+                </Badge>
+              ) : (
+                <Badge tone="neutral">
+                  <XCircle className="size-3" />
+                  Not set
+                </Badge>
+              )}
+            </div>
+            {serverConfigured.slackWebhook ? (
+              <div className="flex items-center gap-2 mt-3">
+                <Button
+                  variant="secondary"
+                  loading={testingSlack}
+                  onClick={testSlack}
+                >
+                  <Send className="size-4" />
+                  Send test message
+                </Button>
+              </div>
+            ) : null}
+          </Card>
+
+          <Card
+            title="Server-side env vars"
+            description="Set in Vercel → Project → Environment Variables."
+          >
+            <ul className="text-sm text-ink-700 grid grid-cols-2 gap-x-3 gap-y-1">
+              {[
+                "OPENAI_API_KEY",
+                "OPENAI_MODEL",
+                "GEMINI_API_KEY",
+                "GEMINI_MODEL",
+                "SLACK_WEBHOOK_URL",
+                "BRAND_COMPANY_NAME",
+                "BRAND_WEBSITE_URL",
+                "BRAND_NICHE",
+                "BRAND_AUDIENCE",
+                "BRAND_PRODUCT_DESCRIPTION",
+                "BRAND_VALUE_PROPOSITION",
+                "BRAND_VOICE",
+                "BRAND_PRIMARY_CTA",
+                "BRAND_PRIMARY_GEO",
+                "BRAND_COMPETITORS",
+                "BRAND_SEED_KEYWORDS",
+                "BRAND_TOPICS_TO_AVOID",
+                "CRON_SECRET"
+              ].map((k) => (
+                <li key={k}>
+                  <code className="bg-ink-100 px-1.5 py-0.5 rounded text-[10px] truncate block">
+                    {k}
+                  </code>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        </div>
 
         {/* Shared workspace — bulk clear isn't exposed in the UI. */}
         {/* If you need to reset state, use `npm run db:push` after dropping tables. */}
@@ -889,12 +892,12 @@ function Card({
   icon?: React.ComponentType<{ className?: string }>;
 }) {
   return (
-    <section className="card p-5 mb-5">
-      <div className="flex items-start justify-between gap-3 mb-4">
-        <div className="flex items-start gap-3">
+    <section className="card p-4 mb-4">
+      <div className="flex items-start justify-between gap-3 mb-3">
+        <div className="flex items-start gap-2.5">
           {Icon ? (
-            <div className="size-8 rounded-md bg-ink-100 text-ink-700 grid place-items-center shrink-0 mt-0.5">
-              <Icon className="size-4" />
+            <div className="size-7 rounded-md bg-ink-100 text-ink-700 grid place-items-center shrink-0 mt-0.5">
+              <Icon className="size-3.5" />
             </div>
           ) : null}
           <div>
@@ -908,7 +911,7 @@ function Card({
         </div>
         {right}
       </div>
-      <div className="space-y-4">{children}</div>
+      <div className="space-y-3">{children}</div>
     </section>
   );
 }

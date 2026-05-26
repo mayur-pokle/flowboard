@@ -31,7 +31,7 @@ export function KanbanColumn({
   const { isOver, setNodeRef } = useDroppable({ id: status });
 
   return (
-    <div className="flex flex-col w-[300px] shrink-0">
+    <div className="flex flex-col w-[380px] shrink-0">
       <div className="flex items-center gap-2 px-2 mb-2">
         <span className={cn("size-2 rounded-full", COLUMN_DOT[status])} />
         <h2 className="text-sm font-semibold text-ink-800">{title}</h2>

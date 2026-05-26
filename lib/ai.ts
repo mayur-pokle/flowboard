@@ -294,9 +294,75 @@ function describeError(err: unknown): string {
     return "Rate-limited or out of quota (429)";
   if (/timeout|ETIMEDOUT|ECONNRESET|fetch failed/i.test(msg))
     return "Network error / timeout";
-  if (/model.*not.*found|does not exist|not_found_error/i.test(msg))
+  if (/model.*not.*found|does not exist|not_found_error|model.*not.*available/i.test(msg))
     return "Model not available on your account";
   return msg.slice(0, 200);
+}
+
+// True when the provider error indicates the *model* was the problem
+// (so retrying with a different model could succeed).
+function isModelUnavailableError(err: unknown): boolean {
+  const msg = ((err as Error)?.message || String(err)).toLowerCase();
+  return (
+    /model.*not.*found/.test(msg) ||
+    /model.*not.*available/.test(msg) ||
+    /does not exist/.test(msg) ||
+    /not_found_error/.test(msg) ||
+    /unsupported.*model/.test(msg) ||
+    /(^|\s)404(\s|$)/.test(msg)
+  );
+}
+
+// Known-safe fallback model lists. We try the configured model first; if it
+// fails with "model not available", we walk this list. Deduped against the
+// configured model so we don't retry the same one twice.
+const GEMINI_FALLBACK_CHAIN = [
+  "gemini-2.0-flash",
+  "gemini-2.5-flash",
+  "gemini-1.5-flash-latest",
+  "gemini-1.5-flash",
+  "gemini-1.5-flash-8b-latest",
+  "gemini-pro"
+];
+
+const OPENAI_FALLBACK_CHAIN = [
+  "gpt-4o-mini",
+  "gpt-4.1-nano",
+  "gpt-3.5-turbo"
+];
+
+// Helper: run an async fn against a chain of model IDs. Returns the first
+// success along with the model that worked. Throws the last error if every
+// candidate fails.
+async function withModelFallbacks<T>(
+  preferred: string,
+  fallbacks: string[],
+  run: (model: string) => Promise<T>
+): Promise<{ result: T; modelUsed: string; triedAndFailed: string[] }> {
+  const tried = new Set<string>();
+  const candidates = [preferred, ...fallbacks].filter((m) => {
+    if (!m) return false;
+    if (tried.has(m)) return false;
+    tried.add(m);
+    return true;
+  });
+  const failed: string[] = [];
+  let lastErr: unknown = null;
+  for (const model of candidates) {
+    try {
+      const result = await run(model);
+      return { result, modelUsed: model, triedAndFailed: failed };
+    } catch (err) {
+      lastErr = err;
+      failed.push(model);
+      // Only continue retrying if the failure is model-specific. Auth/rate
+      // limit errors won't be fixed by switching models, so bail early.
+      if (!isModelUnavailableError(err)) {
+        throw err;
+      }
+    }
+  }
+  throw lastErr || new Error("All model candidates failed");
 }
 
 export async function generateTopics(
@@ -318,14 +384,22 @@ export async function generateTopics(
   for (const which of order) {
     if (which === "openai" && k.openai) {
       try {
-        const raw = await generateTopicsOpenAI(
-          ctx,
-          count,
-          k.openai,
-          k.openaiModel || DEFAULT_OPENAI_MODEL
-        );
+        const { result: raw, modelUsed, triedAndFailed } =
+          await withModelFallbacks(
+            k.openaiModel || DEFAULT_OPENAI_MODEL,
+            OPENAI_FALLBACK_CHAIN,
+            (model) =>
+              generateTopicsOpenAI(ctx, count, k.openai!, model)
+          );
         generated = normalizeTopics(raw);
         provider = "openai";
+        // If we had to fall back, tell the user which model worked so they
+        // can update Settings.
+        if (triedAndFailed.length > 0) {
+          warnings.push(
+            `OpenAI: configured model "${triedAndFailed[0]}" not available — used "${modelUsed}" instead. Update in Settings → AI providers to make this permanent.`
+          );
+        }
         break;
       } catch (err) {
         const msg = describeError(err);
@@ -335,14 +409,20 @@ export async function generateTopics(
     }
     if (which === "gemini" && k.gemini) {
       try {
-        const raw = await generateTopicsGemini(
-          ctx,
-          count,
-          k.gemini,
-          k.geminiModel || DEFAULT_GEMINI_MODEL
-        );
+        const { result: raw, modelUsed, triedAndFailed } =
+          await withModelFallbacks(
+            k.geminiModel || DEFAULT_GEMINI_MODEL,
+            GEMINI_FALLBACK_CHAIN,
+            (model) =>
+              generateTopicsGemini(ctx, count, k.gemini!, model)
+          );
         generated = normalizeTopics(raw);
         provider = "gemini";
+        if (triedAndFailed.length > 0) {
+          warnings.push(
+            `Gemini: configured model "${triedAndFailed[0]}" not available — used "${modelUsed}" instead. Update in Settings → AI providers to make this permanent.`
+          );
+        }
         break;
       } catch (err) {
         const msg = describeError(err);
@@ -949,12 +1029,18 @@ export async function generateContent(
   for (const which of order) {
     if (which === "openai" && k.openai) {
       try {
-        const raw = await generateContentOpenAI(
-          topic,
-          ctx,
-          k.openai,
-          k.openaiModel || DEFAULT_OPENAI_MODEL
-        );
+        const { result: raw, modelUsed, triedAndFailed } =
+          await withModelFallbacks(
+            k.openaiModel || DEFAULT_OPENAI_MODEL,
+            OPENAI_FALLBACK_CHAIN,
+            (model) =>
+              generateContentOpenAI(topic, ctx, k.openai!, model)
+          );
+        if (triedAndFailed.length > 0) {
+          warnings.push(
+            `OpenAI: configured model "${triedAndFailed[0]}" not available — used "${modelUsed}" instead. Update in Settings → AI providers to make this permanent.`
+          );
+        }
         return {
           content: normalizeContent(raw, topic),
           provider: "openai",
@@ -968,12 +1054,18 @@ export async function generateContent(
     }
     if (which === "gemini" && k.gemini) {
       try {
-        const raw = await generateContentGemini(
-          topic,
-          ctx,
-          k.gemini,
-          k.geminiModel || DEFAULT_GEMINI_MODEL
-        );
+        const { result: raw, modelUsed, triedAndFailed } =
+          await withModelFallbacks(
+            k.geminiModel || DEFAULT_GEMINI_MODEL,
+            GEMINI_FALLBACK_CHAIN,
+            (model) =>
+              generateContentGemini(topic, ctx, k.gemini!, model)
+          );
+        if (triedAndFailed.length > 0) {
+          warnings.push(
+            `Gemini: configured model "${triedAndFailed[0]}" not available — used "${modelUsed}" instead. Update in Settings → AI providers to make this permanent.`
+          );
+        }
         return {
           content: normalizeContent(raw, topic),
           provider: "gemini",

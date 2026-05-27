@@ -38,20 +38,20 @@ export function ToastHost() {
         <div
           key={t.id}
           className={cn(
-            "flex items-start gap-2 rounded-lg border bg-white px-3 py-2.5 shadow-cardHover text-sm",
+            "flex items-start gap-2 rounded-lg border bg-white px-3 py-3 shadow-cardHover text-base",
             t.tone === "success" && "border-emerald-200",
             t.tone === "error" && "border-rose-200",
             t.tone === "info" && "border-ink-200"
           )}
         >
           {t.tone === "success" && (
-            <CheckCircle2 className="size-4 text-emerald-600 mt-0.5" />
+            <CheckCircle2 className="size-4 text-emerald-600 mt-1" />
           )}
           {t.tone === "error" && (
-            <AlertCircle className="size-4 text-rose-600 mt-0.5" />
+            <AlertCircle className="size-4 text-rose-600 mt-1" />
           )}
           {t.tone === "info" && (
-            <Info className="size-4 text-brand-600 mt-0.5" />
+            <Info className="size-4 text-brand-600 mt-1" />
           )}
           <div className="flex-1 text-ink-800">{t.message}</div>
           <button

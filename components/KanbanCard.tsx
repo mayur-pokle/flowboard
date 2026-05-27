@@ -40,15 +40,15 @@ export function KanbanCard({
         if (!transform) onClick?.();
       }}
     >
-      <div className="flex items-center gap-1.5 flex-wrap mb-2">
+      <div className="flex items-center gap-2 flex-wrap mb-2">
         <TypeBadge value={task.topic.contentType} />
         <PriorityBadge value={task.topic.priority} />
         <ContentStatusBadge status={task.contentStatus} />
       </div>
-      <div className="text-[14px] font-medium text-ink-900 leading-snug mb-1.5">
+      <div className="text-base font-medium text-ink-900 leading-snug mb-2">
         {task.topic.title}
       </div>
-      <div className="text-[11px] text-ink-500 font-mono truncate">
+      <div className="text-xs text-ink-500 font-mono truncate">
         {task.topic.targetKeyword}
       </div>
       {task.tags.length > 0 && (
@@ -56,14 +56,14 @@ export function KanbanCard({
           {task.tags.slice(0, 3).map((tag) => (
             <span
               key={tag}
-              className="badge bg-ink-100 text-ink-700 ring-1 ring-inset ring-ink-200 text-[10px]"
+              className="badge bg-ink-100 text-ink-700 ring-1 ring-inset ring-ink-200 text-xs"
             >
-              <Tag className="size-2.5" />
+              <Tag className="size-3" />
               {tag}
             </span>
           ))}
           {task.tags.length > 3 && (
-            <span className="text-[10px] text-ink-500">
+            <span className="text-xs text-ink-500">
               +{task.tags.length - 3}
             </span>
           )}

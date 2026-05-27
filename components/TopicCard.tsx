@@ -43,7 +43,7 @@ export function TopicCard({
     <div className="card p-5 hover:shadow-cardHover transition">
       {/* 1. Tags row — content tags on the left, score badges on the right */}
       <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
-        <div className="flex items-center gap-1.5 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap">
           <TypeBadge value={topic.contentType} />
           <PriorityBadge value={topic.priority} />
           {topic.intent ? (
@@ -53,7 +53,7 @@ export function TopicCard({
           ) : null}
           <Badge tone="neutral">Effort: {topic.estimatedEffort}</Badge>
         </div>
-        <div className="flex items-center gap-1.5 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap">
           <Badge tone={scoreTone(impact)} className="gap-1">
             <Sparkles className="size-3" />
             Impact {impact}
@@ -65,19 +65,19 @@ export function TopicCard({
       </div>
 
       {/* 2. Title */}
-      <h3 className="text-[17px] font-semibold text-ink-900 leading-snug mb-2">
+      <h3 className="text-base font-semibold text-ink-900 leading-snug mb-2">
         {topic.title}
       </h3>
 
       {/* 3. Description — full text, no clamp; users get the full pitch */}
-      <p className="text-sm text-ink-600 leading-relaxed mb-3">
+      <p className="text-base text-ink-600 leading-relaxed mb-3">
         {topic.whyOpportunity}
       </p>
 
       {/* Overlap warning, when present */}
       {topic.overlapWithUrl ? (
-        <div className="mb-3 flex items-start gap-1.5 rounded-md border border-amber-200 bg-amber-50/60 px-2.5 py-1.5 text-[12px] text-amber-900">
-          <AlertTriangle className="size-3.5 shrink-0 mt-0.5 text-amber-600" />
+        <div className="mb-3 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50/60 px-3 py-2 text-[12px] text-amber-900">
+          <AlertTriangle className="size-4 shrink-0 mt-1 text-amber-600" />
           <div className="min-w-0">
             Possible overlap with existing content:{" "}
             <a
@@ -88,20 +88,20 @@ export function TopicCard({
             >
               {topic.overlapWithTitle || topic.overlapWithUrl}
             </a>
-            <ExternalLink className="size-3 inline ml-0.5" />
+            <ExternalLink className="size-3 inline ml-1" />
           </div>
         </div>
       ) : null}
 
       {/* 4. + 5. Target keyword + search intent — meta strip */}
       <div className="flex items-center gap-3 flex-wrap text-xs text-ink-600 mb-4">
-        <div className="flex items-center gap-1.5 min-w-0">
-          <Target className="size-3.5 shrink-0 text-ink-400" />
+        <div className="flex items-center gap-2 min-w-0">
+          <Target className="size-4 shrink-0 text-ink-400" />
           <span className="font-mono">{topic.targetKeyword}</span>
         </div>
         <span className="text-ink-300">·</span>
-        <div className="flex items-center gap-1.5 text-ink-500 min-w-0">
-          <Lightbulb className="size-3.5 shrink-0 text-ink-400" />
+        <div className="flex items-center gap-2 text-ink-500 min-w-0">
+          <Lightbulb className="size-4 shrink-0 text-ink-400" />
           <span>{topic.searchIntent}</span>
         </div>
       </div>
@@ -165,8 +165,8 @@ export function TopicCard({
                   {topic.title}
                 </h2>
                 {topic.overlapWithUrl ? (
-                  <div className="mt-2 flex items-start gap-1.5 rounded-md border border-amber-200 bg-amber-50/60 px-2.5 py-1.5 text-[12px] text-amber-900">
-                    <AlertTriangle className="size-3.5 shrink-0 mt-0.5 text-amber-600" />
+                  <div className="mt-2 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50/60 px-3 py-2 text-[12px] text-amber-900">
+                    <AlertTriangle className="size-4 shrink-0 mt-1 text-amber-600" />
                     <div className="min-w-0">
                       May cannibalize an existing page:{" "}
                       <a
@@ -187,7 +187,7 @@ export function TopicCard({
             </div>
 
             <PreviewRow label="Target keyword" icon={Target}>
-              <span className="font-mono text-sm">{topic.targetKeyword}</span>
+              <span className="font-mono text-base">{topic.targetKeyword}</span>
             </PreviewRow>
             <PreviewRow label="Search intent" icon={Lightbulb}>
               {topic.searchIntent}
@@ -247,12 +247,12 @@ function PreviewRow({
   children: React.ReactNode;
 }) {
   return (
-    <div className="py-2.5 border-b border-ink-100 last:border-0">
-      <div className="text-[11px] font-medium text-ink-500 uppercase tracking-wide flex items-center gap-1 mb-0.5">
+    <div className="py-3 border-b border-ink-100 last:border-0">
+      <div className="text-xs font-medium text-ink-500 uppercase tracking-wide flex items-center gap-1 mb-1">
         {Icon ? <Icon className="size-3" /> : null}
         {label}
       </div>
-      <div className="text-sm text-ink-800">{children}</div>
+      <div className="text-base text-ink-800">{children}</div>
     </div>
   );
 }

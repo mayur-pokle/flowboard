@@ -92,7 +92,7 @@ export default function KeywordsPage() {
 
   if (!hydrated) {
     return (
-      <div className="px-8 py-6 text-sm text-ink-500">Loading…</div>
+      <div className="px-8 py-6 text-base text-ink-500">Loading…</div>
     );
   }
 
@@ -135,12 +135,12 @@ export default function KeywordsPage() {
       <div className="flex-1 overflow-auto scrollbar-thin px-8 py-6 max-w-5xl w-full">
         {/* Add new */}
         <section className="card p-4 mb-5">
-          <div className="text-[11px] font-semibold uppercase tracking-wider text-ink-500 mb-3">
+          <div className="text-xs font-semibold uppercase tracking-wider text-ink-500 mb-3">
             Add keyword
           </div>
           <div className="grid sm:grid-cols-[2fr_120px_160px_110px_110px_auto] gap-2">
             <input
-              className="input !py-1.5 text-sm"
+              className="input !py-2 text-base"
               value={newKeyword}
               onChange={(e) => setNewKeyword(e.target.value)}
               onKeyDown={(e) => {
@@ -149,7 +149,7 @@ export default function KeywordsPage() {
               placeholder="month-end close automation"
             />
             <select
-              className="input !py-1.5 text-sm"
+              className="input !py-2 text-base"
               value={newPriority}
               onChange={(e) =>
                 setNewPriority(e.target.value as KeywordPriority)
@@ -162,7 +162,7 @@ export default function KeywordsPage() {
               ))}
             </select>
             <select
-              className="input !py-1.5 text-sm"
+              className="input !py-2 text-base"
               value={newIntent}
               onChange={(e) =>
                 setNewIntent(e.target.value as SearchIntentType)
@@ -175,14 +175,14 @@ export default function KeywordsPage() {
               ))}
             </select>
             <input
-              className="input !py-1.5 text-sm"
+              className="input !py-2 text-base"
               value={newVolume}
               onChange={(e) => setNewVolume(e.target.value)}
               placeholder="Vol"
               inputMode="numeric"
             />
             <input
-              className="input !py-1.5 text-sm"
+              className="input !py-2 text-base"
               value={newDifficulty}
               onChange={(e) => setNewDifficulty(e.target.value)}
               placeholder="KD"
@@ -193,7 +193,7 @@ export default function KeywordsPage() {
               Add
             </Button>
           </div>
-          <p className="text-[11px] text-ink-500 mt-2">
+          <p className="text-xs text-ink-500 mt-2">
             Volume and difficulty are optional — leave blank if you don&apos;t
             have data. Mark <strong>P0</strong> sparingly: those are the
             keywords every generated topic should try to address.
@@ -203,9 +203,9 @@ export default function KeywordsPage() {
         {/* Filter strip */}
         <div className="flex items-center gap-2 mb-3">
           <div className="relative flex-1 max-w-xs">
-            <Search className="size-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-400" />
+            <Search className="size-4 absolute left-3 top-1/2 -translate-y-1/2 text-ink-400" />
             <input
-              className="input !py-1.5 pl-8 text-sm"
+              className="input !py-2 pl-8 text-base"
               placeholder="Filter keywords…"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
@@ -231,7 +231,7 @@ export default function KeywordsPage() {
 
         {/* Rows */}
         {filtered.length === 0 ? (
-          <div className="card p-8 text-center text-sm text-ink-500">
+          <div className="card p-8 text-center text-base text-ink-500">
             No keywords yet. Add the head terms and key long-tails you want
             Flowboard to orient every topic generation around.
           </div>
@@ -264,12 +264,12 @@ function KeywordRow({
   return (
     <div className="px-4 py-3 grid grid-cols-[2fr_120px_140px_110px_110px_130px_auto] gap-2 items-center">
       <input
-        className="input !py-1.5 text-sm font-mono"
+        className="input !py-2 text-base font-mono"
         value={row.keyword}
         onChange={(e) => onUpdate({ keyword: e.target.value })}
       />
       <select
-        className="input !py-1.5 text-xs"
+        className="input !py-2 text-xs"
         value={row.priority}
         onChange={(e) =>
           onUpdate({ priority: e.target.value as KeywordPriority })
@@ -282,7 +282,7 @@ function KeywordRow({
         ))}
       </select>
       <select
-        className="input !py-1.5 text-xs"
+        className="input !py-2 text-xs"
         value={row.intent}
         onChange={(e) =>
           onUpdate({ intent: e.target.value as SearchIntentType })
@@ -295,7 +295,7 @@ function KeywordRow({
         ))}
       </select>
       <input
-        className="input !py-1.5 text-xs"
+        className="input !py-2 text-xs"
         value={row.searchVolume ?? ""}
         onChange={(e) => {
           const v = Number(e.target.value);
@@ -308,7 +308,7 @@ function KeywordRow({
         inputMode="numeric"
       />
       <input
-        className="input !py-1.5 text-xs"
+        className="input !py-2 text-xs"
         value={row.difficulty ?? ""}
         onChange={(e) => {
           const v = Number(e.target.value);
@@ -321,7 +321,7 @@ function KeywordRow({
         inputMode="numeric"
       />
       <select
-        className="input !py-1.5 text-xs"
+        className="input !py-2 text-xs"
         value={row.status}
         onChange={(e) =>
           onUpdate({ status: e.target.value as KeywordStatus })
@@ -337,7 +337,7 @@ function KeywordRow({
         <Badge tone={PRIORITY_TONE[row.priority]}>{row.priority}</Badge>
         <button
           onClick={onRemove}
-          className="p-1.5 text-ink-400 hover:text-rose-600 rounded"
+          className="p-2 text-ink-400 hover:text-rose-600 rounded"
           aria-label="Remove keyword"
         >
           <Trash2 className="size-4" />

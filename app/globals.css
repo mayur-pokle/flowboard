@@ -30,7 +30,7 @@
   }
 
   .badge {
-    @apply inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium;
+    @apply inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium;
   }
 
   .card {
@@ -38,23 +38,39 @@
   }
 
   .input {
-    @apply w-full rounded-md border border-ink-200 bg-white px-3 py-2 text-sm text-ink-800 placeholder:text-ink-400 focus-ring;
+    @apply w-full rounded-md border border-ink-200 bg-white px-3 py-2 text-base text-ink-800 placeholder:text-ink-400 focus-ring;
+  }
+
+  /* Native <select> renders its caret flush against the right edge of the
+   * box. Replace it with a custom inline-SVG chevron that sits 0.75rem in
+   * from the right so the arrow has visual breathing room. Also reserves
+   * pr-9 (2.25rem) so the selected option's text never overlaps the caret.
+   */
+  select.input {
+    @apply appearance-none pr-9 bg-no-repeat;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23667085' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'></polyline></svg>");
+    background-position: right 0.75rem center;
+    background-size: 12px;
+  }
+  /* Remove the Edge / IE legacy dropdown arrow that bypasses appearance:none */
+  select.input::-ms-expand {
+    display: none;
   }
 
   .btn {
-    @apply inline-flex items-center justify-center gap-1.5 rounded-md text-sm font-medium transition focus-ring disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex items-center justify-center gap-2 rounded-md text-base font-medium transition focus-ring disabled:cursor-not-allowed disabled:opacity-50;
   }
   .btn-primary {
-    @apply bg-brand-600 text-white hover:bg-brand-700 px-3.5 py-2;
+    @apply bg-brand-600 text-white hover:bg-brand-700 px-4 py-2;
   }
   .btn-secondary {
-    @apply bg-white text-ink-800 border border-ink-200 hover:bg-ink-50 px-3.5 py-2;
+    @apply bg-white text-ink-800 border border-ink-200 hover:bg-ink-50 px-4 py-2;
   }
   .btn-ghost {
-    @apply text-ink-600 hover:bg-ink-100 hover:text-ink-900 px-2.5 py-1.5;
+    @apply text-ink-600 hover:bg-ink-100 hover:text-ink-900 px-3 py-2;
   }
   .btn-danger {
-    @apply text-red-600 hover:bg-red-50 px-2.5 py-1.5;
+    @apply text-red-600 hover:bg-red-50 px-3 py-2;
   }
 }
 
@@ -74,11 +90,11 @@
   @apply text-base font-semibold mt-4 mb-2 text-ink-900;
 }
 .prose-body p {
-  @apply text-sm leading-6 text-ink-700 mb-3;
+  @apply text-base leading-6 text-ink-700 mb-3;
 }
 .prose-body ul,
 .prose-body ol {
-  @apply text-sm leading-6 text-ink-700 mb-3 pl-5;
+  @apply text-base leading-6 text-ink-700 mb-3 pl-5;
 }
 .prose-body li {
   @apply mb-1 list-disc;
@@ -90,10 +106,10 @@
   @apply font-semibold text-ink-900;
 }
 .prose-body h4 {
-  @apply text-[15px] font-semibold mt-3 mb-1.5 text-ink-900;
+  @apply text-base font-semibold mt-3 mb-2 text-ink-900;
 }
 .prose-body h5 {
-  @apply text-sm font-semibold mt-3 mb-1 text-ink-900 uppercase tracking-wide;
+  @apply text-base font-semibold mt-3 mb-1 text-ink-900 uppercase tracking-wide;
 }
 .prose-body h6 {
   @apply text-xs font-semibold mt-3 mb-1 text-ink-700 uppercase tracking-wider;

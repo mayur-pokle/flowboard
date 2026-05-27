@@ -102,10 +102,10 @@ function EmptyBoard() {
         <div className="size-12 rounded-xl bg-brand-50 text-brand-600 grid place-items-center mx-auto mb-4">
           <Sparkles className="size-6" />
         </div>
-        <h2 className="text-lg font-semibold text-ink-900 mb-1">
+        <h2 className="text-xl font-semibold text-ink-900 mb-1">
           Your board is empty
         </h2>
-        <p className="text-sm text-ink-600 mb-6">
+        <p className="text-base text-ink-600 mb-6">
           Generate AI ideas, pick the ones you like, and they'll show up here as Kanban cards.
         </p>
         <Link href="/ideas">

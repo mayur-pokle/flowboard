@@ -62,7 +62,7 @@ export default function SignInPage() {
             <br />
             Ship them faster.
           </h1>
-          <p className="text-sm text-ink-600 leading-relaxed">
+          <p className="text-base text-ink-600 leading-relaxed">
             Flowboard generates weekly AI-powered content ideas tailored to your
             brand and competitors, then helps you take them from kanban card to
             published article in a few clicks.
@@ -81,7 +81,7 @@ export default function SignInPage() {
             <div>
               <label
                 htmlFor="email"
-                className="text-xs font-medium text-ink-700 mb-1.5 block"
+                className="text-xs font-medium text-ink-700 mb-2 block"
               >
                 Email
               </label>
@@ -101,7 +101,7 @@ export default function SignInPage() {
             <div>
               <label
                 htmlFor="password"
-                className="text-xs font-medium text-ink-700 mb-1.5 block"
+                className="text-xs font-medium text-ink-700 mb-2 block"
               >
                 Password
               </label>
@@ -119,7 +119,7 @@ export default function SignInPage() {
                 <button
                   type="button"
                   onClick={() => setShowPassword((v) => !v)}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-ink-400 hover:text-ink-700 rounded"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-ink-400 hover:text-ink-700 rounded"
                   aria-label={
                     showPassword ? "Hide password" : "Show password"
                   }
@@ -135,8 +135,8 @@ export default function SignInPage() {
             </div>
 
             {error ? (
-              <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 flex items-start gap-2">
-                <AlertCircle className="size-4 mt-0.5 shrink-0" />
+              <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-base text-rose-700 flex items-start gap-2">
+                <AlertCircle className="size-4 mt-1 shrink-0" />
                 <span>{error}</span>
               </div>
             ) : null}
@@ -153,13 +153,13 @@ export default function SignInPage() {
           </form>
         </div>
 
-        <p className="text-[11px] text-ink-500 mt-6 leading-relaxed text-center">
+        <p className="text-xs text-ink-500 mt-6 leading-relaxed text-center">
           Access is limited to authorized team members.
           <br />
           Need an account? Ask your admin to add you to the user list.
         </p>
 
-        <div className="text-[11px] text-ink-400 mt-8 text-center">
+        <div className="text-xs text-ink-400 mt-8 text-center">
           © {new Date().getFullYear()} Flowboard. Internal preview.
         </div>
       </div>

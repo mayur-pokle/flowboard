@@ -124,7 +124,7 @@ export function ContentEditor({ content, onSave, onCancel }: Props) {
       <div className="grid gap-3">
         <Field label="SEO title">
           <input
-            className="input text-sm"
+            className="input text-base"
             value={draft.metaTitle}
             onChange={(e) => update("metaTitle", e.target.value)}
             maxLength={70}
@@ -133,7 +133,7 @@ export function ContentEditor({ content, onSave, onCancel }: Props) {
         </Field>
         <Field label="Meta description">
           <textarea
-            className="input min-h-[64px] text-sm"
+            className="input min-h-[64px] text-base"
             value={draft.metaDescription}
             onChange={(e) => update("metaDescription", e.target.value)}
             maxLength={180}
@@ -144,7 +144,7 @@ export function ContentEditor({ content, onSave, onCancel }: Props) {
           <div className="flex items-center gap-2">
             <span className="text-xs text-ink-500 font-mono">/blog/</span>
             <input
-              className="input text-sm font-mono"
+              className="input text-base font-mono"
               value={draft.urlSlug}
               onChange={(e) =>
                 update(
@@ -179,7 +179,7 @@ export function ContentEditor({ content, onSave, onCancel }: Props) {
               label="Preview"
             />
           </div>
-          <div className="text-[11px] text-ink-500 pr-3">
+          <div className="text-xs text-ink-500 pr-3">
             {wordCount(draft.body)} words
           </div>
         </div>
@@ -194,7 +194,7 @@ export function ContentEditor({ content, onSave, onCancel }: Props) {
             ref={textareaRef}
             value={draft.body}
             onChange={(e) => update("body", e.target.value)}
-            className="block w-full px-4 py-3 text-sm font-mono leading-relaxed bg-white text-ink-900 focus:outline-none scrollbar-thin"
+            className="block w-full px-4 py-3 text-base font-mono leading-relaxed bg-white text-ink-900 focus:outline-none scrollbar-thin"
             style={{ minHeight: 400, resize: "vertical" }}
             spellCheck
           />
@@ -360,11 +360,11 @@ function Toolbar({
   onAction: (action: ToolbarAction) => void;
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-1 px-2 py-1.5 border-b border-ink-200 bg-white">
+    <div className="flex flex-wrap items-center gap-1 px-2 py-2 border-b border-ink-200 bg-white">
       {TOOLBAR_GROUPS.map((group, gi) => (
         <div
           key={gi}
-          className="flex items-center gap-0.5 border-r border-ink-200 pr-1.5 mr-1 last:border-r-0 last:pr-0 last:mr-0"
+          className="flex items-center gap-1 border-r border-ink-200 pr-2 mr-1 last:border-r-0 last:pr-0 last:mr-0"
         >
           {group.map((btn) => {
             const Icon = btn.icon;
@@ -374,7 +374,7 @@ function Toolbar({
                 type="button"
                 onClick={() => onAction(btn.action)}
                 title={btn.title}
-                className="p-1.5 text-ink-600 hover:bg-ink-100 hover:text-ink-900 rounded"
+                className="p-2 text-ink-600 hover:bg-ink-100 hover:text-ink-900 rounded"
               >
                 <Icon className="size-4" />
               </button>
@@ -402,13 +402,13 @@ function TabButton({
       type="button"
       onClick={onClick}
       className={
-        "flex items-center gap-1.5 px-3 py-2 -mb-px border-b-2 text-xs " +
+        "flex items-center gap-2 px-3 py-2 -mb-px border-b-2 text-xs " +
         (active
           ? "border-brand-600 text-brand-700 bg-white font-medium"
           : "border-transparent text-ink-500 hover:text-ink-800")
       }
     >
-      <Icon className="size-3.5" />
+      <Icon className="size-4" />
       {label}
     </button>
   );
@@ -439,7 +439,7 @@ function CharCount({ value, max }: { value: number; max: number }) {
   const over = value > max;
   return (
     <div
-      className={`text-[10px] mt-1 ${
+      className={`text-xs mt-1 ${
         over ? "text-rose-600" : "text-ink-500"
       }`}
     >
@@ -464,14 +464,14 @@ function StringArrayEditor({
 
   return (
     <Field label={label}>
-      <div className="space-y-1.5">
+      <div className="space-y-2">
         {items.length === 0 ? (
           <div className="text-xs text-ink-500 italic">None yet.</div>
         ) : (
           items.map((it, idx) => (
             <div key={idx} className="flex gap-2 items-start">
               <textarea
-                className="input text-sm min-h-[36px] py-1.5"
+                className="input text-base min-h-[36px] py-2"
                 value={it}
                 onChange={(e) => {
                   const next = [...items];
@@ -484,7 +484,7 @@ function StringArrayEditor({
                 onClick={() =>
                   onChange(items.filter((_, i) => i !== idx))
                 }
-                className="p-1.5 text-ink-400 hover:text-rose-600 rounded shrink-0 mt-1"
+                className="p-2 text-ink-400 hover:text-rose-600 rounded shrink-0 mt-1"
                 aria-label="Remove"
               >
                 <Trash2 className="size-4" />
@@ -494,7 +494,7 @@ function StringArrayEditor({
         )}
         <div className="flex gap-2 items-start">
           <input
-            className="input text-sm"
+            className="input text-base"
             placeholder={placeholder}
             value={newItem}
             onChange={(e) => setNewItem(e.target.value)}
@@ -514,7 +514,7 @@ function StringArrayEditor({
                 setNewItem("");
               }
             }}
-            className="!py-1.5"
+            className="!py-2"
           >
             <Plus className="size-4" />
             Add
@@ -543,7 +543,7 @@ function FaqEditor({
               key={idx}
               className="rounded-md border border-ink-200 bg-ink-50/40 p-3"
             >
-              <div className="flex items-center justify-between mb-1.5">
+              <div className="flex items-center justify-between mb-2">
                 <Badge tone="neutral">FAQ {idx + 1}</Badge>
                 <button
                   type="button"
@@ -555,7 +555,7 @@ function FaqEditor({
                 </button>
               </div>
               <input
-                className="input text-sm font-medium mb-2"
+                className="input text-base font-medium mb-2"
                 value={f.q}
                 placeholder="Question"
                 onChange={(e) => {
@@ -565,7 +565,7 @@ function FaqEditor({
                 }}
               />
               <textarea
-                className="input text-sm min-h-[64px]"
+                className="input text-base min-h-[64px]"
                 value={f.a}
                 placeholder="Answer"
                 onChange={(e) => {
@@ -746,7 +746,7 @@ function renderInline(s: string): React.ReactNode {
       parts.push(
         <code
           key={key++}
-          className="bg-ink-100 px-1 py-0.5 rounded text-[12px] font-mono"
+          className="bg-ink-100 px-1 py-1 rounded text-[12px] font-mono"
         >
           {m[4]}
         </code>

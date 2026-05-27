@@ -312,7 +312,7 @@ export default function IdeasPage() {
       settings.competitors.length === 0 ? (
         <div className="mx-8 mt-4 card p-3 border-amber-200 bg-amber-50/60 flex items-center gap-3">
           <SettingsIcon className="size-4 text-amber-600 shrink-0" />
-          <div className="text-sm text-ink-800 flex-1">
+          <div className="text-base text-ink-800 flex-1">
             Add your company, product, and competitors in{" "}
             <Link
               href="/settings/api"
@@ -336,14 +336,14 @@ export default function IdeasPage() {
             className="input pl-9"
           />
         </div>
-        <div className="flex items-center gap-2 text-sm flex-wrap">
+        <div className="flex items-center gap-2 text-base flex-wrap">
           <Filter className="size-4 text-ink-400" />
           <select
             value={filterType}
             onChange={(e) =>
               setFilterType(e.target.value as ContentType | "all")
             }
-            className="input !w-auto !py-1.5"
+            className="input !w-auto !py-2"
           >
             <option value="all">All types</option>
             {TYPES.map((t) => (
@@ -357,7 +357,7 @@ export default function IdeasPage() {
             onChange={(e) =>
               setFilterPriority(e.target.value as Priority | "all")
             }
-            className="input !w-auto !py-1.5"
+            className="input !w-auto !py-2"
           >
             <option value="all">All priorities</option>
             {PRIORITIES.map((p) => (
@@ -371,7 +371,7 @@ export default function IdeasPage() {
             onChange={(e) =>
               setFilterIntent(e.target.value as SearchIntentType | "all")
             }
-            className="input !w-auto !py-1.5"
+            className="input !w-auto !py-2"
           >
             <option value="all">All intents</option>
             {INTENTS.map((i) => (
@@ -383,7 +383,7 @@ export default function IdeasPage() {
           <select
             value={minImpact}
             onChange={(e) => setMinImpact(Number(e.target.value))}
-            className="input !w-auto !py-1.5"
+            className="input !w-auto !py-2"
             title="Minimum impact score"
           >
             <option value={0}>Impact: any</option>
@@ -394,7 +394,7 @@ export default function IdeasPage() {
           <select
             value={minNovelty}
             onChange={(e) => setMinNovelty(Number(e.target.value))}
-            className="input !w-auto !py-1.5"
+            className="input !w-auto !py-2"
             title="Minimum novelty score (anti-cannibalization)"
           >
             <option value={0}>Novelty: any</option>
@@ -402,12 +402,12 @@ export default function IdeasPage() {
             <option value={70}>Novelty ≥ 70</option>
             <option value={85}>Novelty ≥ 85</option>
           </select>
-          <label className="flex items-center gap-1.5 text-xs text-ink-600 cursor-pointer select-none">
+          <label className="flex items-center gap-2 text-xs text-ink-600 cursor-pointer select-none">
             <input
               type="checkbox"
               checked={hideOverlap}
               onChange={(e) => setHideOverlap(e.target.checked)}
-              className="size-3.5 accent-brand-600"
+              className="size-4 accent-brand-600"
             />
             Hide flagged overlaps
           </label>
@@ -485,10 +485,10 @@ function EmptyState({
       <div className="size-12 rounded-xl bg-brand-50 text-brand-600 grid place-items-center mx-auto mb-4">
         <Sparkles className="size-6" />
       </div>
-      <h2 className="text-lg font-semibold text-ink-900 mb-1">
+      <h2 className="text-xl font-semibold text-ink-900 mb-1">
         {hasFilters ? "No ideas match your filters" : "No ideas yet"}
       </h2>
-      <p className="text-sm text-ink-600 mb-6">
+      <p className="text-base text-ink-600 mb-6">
         {hasFilters
           ? "Try clearing filters or generating a new batch."
           : "Generate a batch of fresh content opportunities — calculators, templates, guides, and more."}

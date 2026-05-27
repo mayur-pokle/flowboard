@@ -64,7 +64,7 @@ export function CommentsSection({ taskId }: Props) {
           No remarks yet. Be the first to leave a note for the team.
         </div>
       ) : (
-        <ul className="space-y-2.5">
+        <ul className="space-y-3">
           {comments.map((c) => (
             <CommentRow
               key={c.id}
@@ -79,7 +79,7 @@ export function CommentsSection({ taskId }: Props) {
       {/* Add new */}
       <div className="rounded-md border border-ink-200 bg-ink-50/40 p-2">
         <textarea
-          className="input min-h-[60px] text-sm bg-white"
+          className="input min-h-[60px] text-base bg-white"
           placeholder="Leave a remark for the team…"
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
@@ -91,7 +91,7 @@ export function CommentsSection({ taskId }: Props) {
           }}
         />
         <div className="flex items-center justify-between mt-2">
-          <span className="text-[11px] text-ink-500">
+          <span className="text-xs text-ink-500">
             Cmd / Ctrl + Enter to post
           </span>
           <Button
@@ -99,9 +99,9 @@ export function CommentsSection({ taskId }: Props) {
             onClick={handlePost}
             loading={posting}
             disabled={!draft.trim()}
-            className="!py-1.5"
+            className="!py-2"
           >
-            <Send className="size-3.5" />
+            <Send className="size-4" />
             Post comment
           </Button>
         </div>
@@ -156,17 +156,17 @@ function CommentRow({
   }
 
   return (
-    <li className="flex gap-2.5">
+    <li className="flex gap-3">
       <Avatar email={comment.authorEmail} name={comment.authorName} />
-      <div className="flex-1 min-w-0 rounded-md bg-white border border-ink-200 p-2.5">
+      <div className="flex-1 min-w-0 rounded-md bg-white border border-ink-200 p-3">
         <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
-          <div className="flex items-center gap-1.5 min-w-0">
+          <div className="flex items-center gap-2 min-w-0">
             <span className="text-xs font-medium text-ink-800 truncate">
               {comment.authorName || comment.authorEmail || "User"}
             </span>
-            <span className="text-[11px] text-ink-400">·</span>
+            <span className="text-xs text-ink-400">·</span>
             <span
-              className="text-[11px] text-ink-500"
+              className="text-xs text-ink-500"
               title={new Date(comment.createdAt).toLocaleString()}
             >
               {timeAgo(comment.createdAt)}
@@ -174,7 +174,7 @@ function CommentRow({
             </span>
           </div>
           {isAuthor ? (
-            <div className="flex items-center gap-0.5">
+            <div className="flex items-center gap-1">
               {editing ? null : (
                 <>
                   <button
@@ -182,14 +182,14 @@ function CommentRow({
                     className="p-1 text-ink-400 hover:text-ink-800 rounded"
                     aria-label="Edit"
                   >
-                    <Pencil className="size-3.5" />
+                    <Pencil className="size-4" />
                   </button>
                   <button
                     onClick={handleDelete}
                     className="p-1 text-ink-400 hover:text-rose-600 rounded"
                     aria-label="Delete"
                   >
-                    <Trash2 className="size-3.5" />
+                    <Trash2 className="size-4" />
                   </button>
                 </>
               )}
@@ -200,7 +200,7 @@ function CommentRow({
         {editing ? (
           <div>
             <textarea
-              className="input text-sm min-h-[60px]"
+              className="input text-base min-h-[60px]"
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               autoFocus
@@ -214,7 +214,7 @@ function CommentRow({
                 }}
                 className="!py-1 !px-2 text-xs"
               >
-                <X className="size-3.5" />
+                <X className="size-4" />
                 Cancel
               </Button>
               <Button
@@ -223,13 +223,13 @@ function CommentRow({
                 loading={saving}
                 className="!py-1 !px-2 text-xs"
               >
-                <Check className="size-3.5" />
+                <Check className="size-4" />
                 Save
               </Button>
             </div>
           </div>
         ) : (
-          <div className="text-sm text-ink-800 whitespace-pre-wrap break-words">
+          <div className="text-base text-ink-800 whitespace-pre-wrap break-words">
             {comment.body}
           </div>
         )}
@@ -241,8 +241,8 @@ function CommentRow({
 function Avatar({ email, name }: { email: string; name: string }) {
   const init = initials(name || email);
   return (
-    <div className="size-7 rounded-full bg-brand-600 text-white grid place-items-center text-[10px] font-semibold shrink-0">
-      {init || <MessageSquare className="size-3.5" />}
+    <div className="size-7 rounded-full bg-brand-600 text-white grid place-items-center text-xs font-semibold shrink-0">
+      {init || <MessageSquare className="size-4" />}
     </div>
   );
 }

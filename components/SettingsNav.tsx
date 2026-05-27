@@ -42,13 +42,13 @@ export function SettingsNav() {
               key={t.href}
               href={t.href}
               className={cn(
-                "px-3 py-2 -mb-px border-b-2 text-sm flex items-center gap-1.5 transition",
+                "px-3 py-2 -mb-px border-b-2 text-base flex items-center gap-2 transition",
                 active
                   ? "border-brand-600 text-brand-700 font-medium"
                   : "border-transparent text-ink-500 hover:text-ink-800"
               )}
             >
-              <Icon className="size-3.5" />
+              <Icon className="size-4" />
               {t.label}
             </Link>
           );

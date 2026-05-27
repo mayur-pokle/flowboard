@@ -146,7 +146,7 @@ export function CardDetailPanel({ task }: { task: Task }) {
           <h1 className="text-xl font-semibold text-ink-900 leading-snug">
             {task.topic.title}
           </h1>
-          <div className="text-xs text-ink-500 mt-1.5 font-mono">
+          <div className="text-xs text-ink-500 mt-2 font-mono">
             {task.topic.targetKeyword}
           </div>
         </div>
@@ -159,7 +159,7 @@ export function CardDetailPanel({ task }: { task: Task }) {
               onChange={(e) =>
                 setTaskStatus(task.id, e.target.value as Status)
               }
-              className="input !w-auto !py-1.5"
+              className="input !w-auto !py-2"
             >
               {(["todo", "in_progress", "done"] as Status[]).map((s) => (
                 <option key={s} value={s}>
@@ -175,7 +175,7 @@ export function CardDetailPanel({ task }: { task: Task }) {
                 onChange={(e) =>
                   setTaskPriority(task.id, e.target.value as Priority)
                 }
-                className="input !w-auto !py-1.5"
+                className="input !w-auto !py-2"
               >
                 {PRIORITIES.map((p) => (
                   <option key={p} value={p}>
@@ -199,7 +199,7 @@ export function CardDetailPanel({ task }: { task: Task }) {
                   title="Click to remove"
                 >
                   {tag}
-                  <X className="size-2.5" />
+                  <X className="size-3" />
                 </button>
               ))}
               <input
@@ -254,7 +254,7 @@ export function CardDetailPanel({ task }: { task: Task }) {
                   onClick={() => setEditingContent(true)}
                   className="!py-1 !px-2 text-xs"
                 >
-                  <Pencil className="size-3.5" />
+                  <Pencil className="size-4" />
                   Edit
                 </Button>
               )
@@ -295,7 +295,7 @@ export function CardDetailPanel({ task }: { task: Task }) {
 
                 {(task.content.ctaPlacements ?? []).length > 0 && (
                   <CollapsibleField label="CTA placements">
-                    <ul className="text-sm text-ink-700 space-y-1.5 list-disc pl-5">
+                    <ul className="text-base text-ink-700 space-y-2 list-disc pl-5">
                       {(task.content.ctaPlacements ?? []).map((c, i) => (
                         <li key={i}>{c}</li>
                       ))}
@@ -305,7 +305,7 @@ export function CardDetailPanel({ task }: { task: Task }) {
 
                 {(task.content.internalLinks ?? []).length > 0 && (
                   <CollapsibleField label="Internal-link suggestions">
-                    <ul className="text-sm text-ink-700 space-y-1.5 list-disc pl-5">
+                    <ul className="text-base text-ink-700 space-y-2 list-disc pl-5">
                       {(task.content.internalLinks ?? []).map((l, i) => (
                         <li key={i}>{l}</li>
                       ))}
@@ -320,10 +320,10 @@ export function CardDetailPanel({ task }: { task: Task }) {
                     <div className="space-y-3">
                       {(task.content.faqs ?? []).map((f, i) => (
                         <div key={i}>
-                          <div className="text-sm font-semibold text-ink-900">
+                          <div className="text-base font-semibold text-ink-900">
                             {f.q}
                           </div>
-                          <div className="text-sm text-ink-700 mt-0.5">
+                          <div className="text-base text-ink-700 mt-1">
                             {f.a}
                           </div>
                         </div>
@@ -336,7 +336,7 @@ export function CardDetailPanel({ task }: { task: Task }) {
                   label="Schema markup (JSON-LD)"
                   defaultOpen={false}
                 >
-                  <pre className="bg-ink-900 text-ink-100 p-3 rounded text-[11px] overflow-auto max-h-64 scrollbar-thin font-mono leading-relaxed">
+                  <pre className="bg-ink-900 text-ink-100 p-3 rounded text-xs overflow-auto max-h-64 scrollbar-thin font-mono leading-relaxed">
                     {task.content.schemaJsonLd}
                   </pre>
                 </CollapsibleField>
@@ -451,7 +451,7 @@ function Section({
   return (
     <div className="px-6 py-5 border-b border-ink-100">
       <div className="flex items-center justify-between mb-3 gap-2">
-        <h2 className="text-[11px] font-semibold uppercase tracking-wider text-ink-500">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-500">
           {title}
         </h2>
         {right}
@@ -470,8 +470,8 @@ function ReadField({
 }) {
   return (
     <div className="grid grid-cols-[140px_1fr] gap-3 items-start">
-      <div className="text-xs text-ink-500 pt-1.5">{label}</div>
-      <div className="text-sm text-ink-800 min-w-0">{children}</div>
+      <div className="text-xs text-ink-500 pt-2">{label}</div>
+      <div className="text-base text-ink-800 min-w-0">{children}</div>
     </div>
   );
 }
@@ -485,8 +485,8 @@ function Field({
 }) {
   return (
     <div className="grid grid-cols-[140px_1fr] gap-3 items-start">
-      <div className="text-xs text-ink-500 pt-1.5">{label}</div>
-      <div className="text-sm text-ink-800 min-w-0">{children}</div>
+      <div className="text-xs text-ink-500 pt-2">{label}</div>
+      <div className="text-base text-ink-800 min-w-0">{children}</div>
     </div>
   );
 }
@@ -510,11 +510,11 @@ function CollapsibleField({
         className="flex items-center gap-1 text-xs font-medium text-ink-700 hover:text-ink-900"
       >
         {open ? (
-          <ChevronDown className="size-3.5" />
+          <ChevronDown className="size-4" />
         ) : (
-          <ChevronRight className="size-3.5" />
+          <ChevronRight className="size-4" />
         )}
-        {Icon ? <Icon className="size-3.5" /> : null}
+        {Icon ? <Icon className="size-4" /> : null}
         {label}
       </button>
       {open ? <div className="mt-2">{children}</div> : null}
@@ -533,7 +533,7 @@ function ContentStatusRow({
 }) {
   if (status === "generating") {
     return (
-      <div className="flex items-center gap-2 text-sm text-ink-700">
+      <div className="flex items-center gap-2 text-base text-ink-700">
         <Loader2 className="size-4 animate-spin text-brand-600" />
         Generating long-form SEO content (this can take 10-30 seconds with live AI)…
       </div>
@@ -541,7 +541,7 @@ function ContentStatusRow({
   }
   if (status === "completed") {
     return (
-      <div className="flex items-center gap-2 text-sm text-emerald-700">
+      <div className="flex items-center gap-2 text-base text-emerald-700">
         <CheckCircle2 className="size-4" />
         Content ready ({wordCount?.toLocaleString() ?? "—"} words)
       </div>
@@ -549,7 +549,7 @@ function ContentStatusRow({
   }
   if (status === "error") {
     return (
-      <div className="flex items-center gap-2 text-sm text-rose-700">
+      <div className="flex items-center gap-2 text-base text-rose-700">
         Generation failed.{" "}
         <button
           onClick={onGenerate}
@@ -561,7 +561,7 @@ function ContentStatusRow({
     );
   }
   return (
-    <div className="flex items-center gap-2 text-sm text-ink-700">
+    <div className="flex items-center gap-2 text-base text-ink-700">
       <Plus className="size-4" />
       Not started.{" "}
       <button
@@ -656,7 +656,7 @@ function renderInline(s: string): React.ReactNode {
       parts.push(
         <code
           key={key++}
-          className="bg-ink-100 px-1 py-0.5 rounded text-[12px] font-mono"
+          className="bg-ink-100 px-1 py-1 rounded text-[12px] font-mono"
         >
           {m[3]}
         </code>

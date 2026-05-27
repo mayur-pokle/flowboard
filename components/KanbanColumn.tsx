@@ -34,7 +34,7 @@ export function KanbanColumn({
     <div className="flex flex-col w-[380px] shrink-0">
       <div className="flex items-center gap-2 px-2 mb-2">
         <span className={cn("size-2 rounded-full", COLUMN_DOT[status])} />
-        <h2 className="text-sm font-semibold text-ink-800">{title}</h2>
+        <h2 className="text-base font-semibold text-ink-800">{title}</h2>
         <span className="text-xs text-ink-500 tabular-nums">
           {tasks.length}
         </span>

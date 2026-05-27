@@ -296,7 +296,7 @@ export default function ContentLibraryPage() {
   }
 
   if (!hydrated) {
-    return <div className="px-8 py-6 text-sm text-ink-500">Loading…</div>;
+    return <div className="px-8 py-6 text-base text-ink-500">Loading…</div>;
   }
 
   const filtered = query.trim()
@@ -341,13 +341,13 @@ export default function ContentLibraryPage() {
       <div className="flex-1 overflow-auto scrollbar-thin px-8 py-6 max-w-5xl w-full">
         {/* Sitemap section */}
         <section className="card p-4 mb-4">
-          <div className="text-[11px] font-semibold uppercase tracking-wider text-ink-500 mb-2 flex items-center gap-1">
-            <Globe className="size-3.5" />
+          <div className="text-xs font-semibold uppercase tracking-wider text-ink-500 mb-2 flex items-center gap-1">
+            <Globe className="size-4" />
             Import from sitemap
           </div>
           <div className="flex gap-2">
             <input
-              className="input !py-1.5 text-sm flex-1 font-mono"
+              className="input !py-2 text-base flex-1 font-mono"
               value={sitemapUrl}
               onChange={(e) => setSitemapUrl(e.target.value)}
               onKeyDown={(e) => {
@@ -364,7 +364,7 @@ export default function ContentLibraryPage() {
               Import all
             </Button>
           </div>
-          <p className="text-[11px] text-ink-500 mt-2">
+          <p className="text-xs text-ink-500 mt-2">
             Imports every URL from the sitemap in one shot (up to 5000).
             Titles are auto-derived from the URL path — click{" "}
             <strong>Enrich titles</strong> in the header to fetch the real
@@ -373,20 +373,20 @@ export default function ContentLibraryPage() {
 
           {/* Saved sitemaps */}
           {savedSitemaps.length > 0 ? (
-            <div className="mt-3 border-t border-ink-100 pt-3 space-y-1.5">
-              <div className="text-[11px] font-semibold uppercase tracking-wider text-ink-500 mb-1">
+            <div className="mt-3 border-t border-ink-100 pt-3 space-y-2">
+              <div className="text-xs font-semibold uppercase tracking-wider text-ink-500 mb-1">
                 Saved sitemaps
               </div>
               {savedSitemaps.map((sm) => (
                 <div
                   key={sm.url}
-                  className="flex items-center gap-2 text-sm py-1 px-2 rounded hover:bg-ink-50"
+                  className="flex items-center gap-2 text-base py-1 px-2 rounded hover:bg-ink-50"
                 >
-                  <Globe className="size-3.5 text-ink-400 shrink-0" />
+                  <Globe className="size-4 text-ink-400 shrink-0" />
                   <span className="font-mono text-xs truncate flex-1">
                     {sm.url}
                   </span>
-                  <span className="text-[11px] text-ink-500 whitespace-nowrap">
+                  <span className="text-xs text-ink-500 whitespace-nowrap">
                     {sm.total} URLs
                     {sm.unenriched > 0
                       ? ` · ${sm.unenriched} need titles`
@@ -399,7 +399,7 @@ export default function ContentLibraryPage() {
                     className="!py-1 !px-2"
                     title="Re-fetch this sitemap and add new URLs"
                   >
-                    <RefreshCw className="size-3.5" />
+                    <RefreshCw className="size-4" />
                     Refresh
                   </Button>
                 </div>
@@ -410,7 +410,7 @@ export default function ContentLibraryPage() {
 
         {/* CSV */}
         <section className="card p-4 mb-4">
-          <div className="text-[11px] font-semibold uppercase tracking-wider text-ink-500 mb-2">
+          <div className="text-xs font-semibold uppercase tracking-wider text-ink-500 mb-2">
             CSV
           </div>
           <div className="flex gap-2">
@@ -437,7 +437,7 @@ export default function ContentLibraryPage() {
               Export CSV
             </Button>
           </div>
-          <p className="text-[11px] text-ink-500 mt-2">
+          <p className="text-xs text-ink-500 mt-2">
             Required columns: <code>url</code>, <code>title</code>. Optional:{" "}
             <code>targetKeyword</code>, <code>intent</code>.
           </p>
@@ -445,30 +445,30 @@ export default function ContentLibraryPage() {
 
         {/* Manual add */}
         <section className="card p-4 mb-5">
-          <div className="text-[11px] font-semibold uppercase tracking-wider text-ink-500 mb-3">
+          <div className="text-xs font-semibold uppercase tracking-wider text-ink-500 mb-3">
             Add manually
           </div>
           <div className="grid sm:grid-cols-[2fr_2fr_1.5fr_150px_auto] gap-2">
             <input
-              className="input !py-1.5 text-sm font-mono"
+              className="input !py-2 text-base font-mono"
               value={newUrl}
               onChange={(e) => setNewUrl(e.target.value)}
               placeholder="https://acme.com/blog/post"
             />
             <input
-              className="input !py-1.5 text-sm"
+              className="input !py-2 text-base"
               value={newTitle}
               onChange={(e) => setNewTitle(e.target.value)}
               placeholder="Page title"
             />
             <input
-              className="input !py-1.5 text-sm font-mono"
+              className="input !py-2 text-base font-mono"
               value={newKeyword}
               onChange={(e) => setNewKeyword(e.target.value)}
               placeholder="target keyword (optional)"
             />
             <select
-              className="input !py-1.5 text-sm"
+              className="input !py-2 text-base"
               value={newIntent}
               onChange={(e) =>
                 setNewIntent(e.target.value as SearchIntentType | "")
@@ -491,9 +491,9 @@ export default function ContentLibraryPage() {
         {/* Filter */}
         <div className="flex items-center gap-2 mb-3">
           <div className="relative flex-1 max-w-xs">
-            <Search className="size-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-400" />
+            <Search className="size-4 absolute left-3 top-1/2 -translate-y-1/2 text-ink-400" />
             <input
-              className="input !py-1.5 pl-8 text-sm"
+              className="input !py-2 pl-8 text-base"
               placeholder="Filter library…"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
@@ -503,7 +503,7 @@ export default function ContentLibraryPage() {
 
         {/* Items */}
         {filtered.length === 0 ? (
-          <div className="card p-8 text-center text-sm text-ink-500">
+          <div className="card p-8 text-center text-base text-ink-500">
             No content yet. Import your sitemap above or add URLs manually.
           </div>
         ) : (
@@ -546,7 +546,7 @@ function LibraryRow({
     <div className="px-4 py-3 grid grid-cols-[2fr_2fr_1.5fr_140px_auto] gap-2 items-center">
       <div className="flex items-center gap-2 min-w-0">
         <input
-          className="input !py-1.5 text-sm font-mono truncate"
+          className="input !py-2 text-base font-mono truncate"
           value={row.url}
           onChange={(e) => onUpdate({ url: e.target.value })}
         />
@@ -557,18 +557,18 @@ function LibraryRow({
           className="p-1 text-ink-400 hover:text-ink-700"
           aria-label="Visit"
         >
-          <ExternalLink className="size-3.5" />
+          <ExternalLink className="size-4" />
         </a>
       </div>
-      <div className="flex items-center gap-1.5">
+      <div className="flex items-center gap-2">
         <input
-          className="input !py-1.5 text-sm"
+          className="input !py-2 text-base"
           value={row.title}
           onChange={(e) => onUpdate({ title: e.target.value })}
         />
         {isAuto ? (
           <span
-            className="text-[10px] text-amber-700 font-medium shrink-0"
+            className="text-xs text-amber-700 font-medium shrink-0"
             title="Auto-derived from URL path — click Enrich titles to fetch the real page title"
           >
             auto
@@ -576,13 +576,13 @@ function LibraryRow({
         ) : null}
       </div>
       <input
-        className="input !py-1.5 text-sm font-mono"
+        className="input !py-2 text-base font-mono"
         value={row.targetKeyword}
         onChange={(e) => onUpdate({ targetKeyword: e.target.value })}
         placeholder="target keyword"
       />
       <select
-        className="input !py-1.5 text-xs"
+        className="input !py-2 text-xs"
         value={row.intent}
         onChange={(e) =>
           onUpdate({ intent: e.target.value as ExistingContent["intent"] })
@@ -597,7 +597,7 @@ function LibraryRow({
       </select>
       <button
         onClick={onRemove}
-        className="p-1.5 text-ink-400 hover:text-rose-600 rounded justify-self-end"
+        className="p-2 text-ink-400 hover:text-rose-600 rounded justify-self-end"
         aria-label="Remove"
       >
         <Trash2 className="size-4" />
@@ -633,12 +633,12 @@ function RemovedUrlsModal({
               <AlertTriangle className="size-5" />
             </div>
             <div>
-              <h2 className="text-sm font-semibold text-ink-900">
+              <h2 className="text-base font-semibold text-ink-900">
                 {modal.removed.length} URL
                 {modal.removed.length === 1 ? "" : "s"} no longer in this
                 sitemap
               </h2>
-              <p className="text-xs text-ink-500 mt-0.5 max-w-md">
+              <p className="text-xs text-ink-500 mt-1 max-w-md">
                 These URLs were imported from this sitemap previously but
                 aren&apos;t in it anymore. You probably unpublished or moved
                 them. Delete from your library to keep cannibalization checks
@@ -657,11 +657,11 @@ function RemovedUrlsModal({
 
         <div className="flex-1 overflow-auto scrollbar-thin border border-ink-200 rounded-md divide-y divide-ink-100">
           {modal.removed.map((r) => (
-            <div key={r.id} className="px-3 py-2 text-sm">
+            <div key={r.id} className="px-3 py-2 text-base">
               <div className="font-medium text-ink-800 truncate">
                 {r.title}
               </div>
-              <div className="text-[11px] text-ink-500 font-mono truncate">
+              <div className="text-xs text-ink-500 font-mono truncate">
                 {r.url}
               </div>
             </div>

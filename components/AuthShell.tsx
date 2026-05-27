@@ -53,7 +53,7 @@ export function AuthShell({ children }: { children: React.ReactNode }) {
 
   if (status === "loading") {
     return (
-      <div className="min-h-screen grid place-items-center text-ink-400 text-sm">
+      <div className="min-h-screen grid place-items-center text-ink-400 text-base">
         Loading…
       </div>
     );
@@ -66,7 +66,7 @@ export function AuthShell({ children }: { children: React.ReactNode }) {
   // Authenticated
   if (!hydrated) {
     return (
-      <div className="min-h-screen grid place-items-center text-ink-400 text-sm">
+      <div className="min-h-screen grid place-items-center text-ink-400 text-base">
         Loading your workspace…
       </div>
     );

@@ -58,7 +58,7 @@ export function Sidebar() {
               key={item.href}
               href={item.href}
               className={cn(
-                "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition",
+                "flex items-center gap-3 rounded-md px-3 py-2 text-base transition",
                 active
                   ? "bg-brand-50 text-brand-700"
                   : "text-ink-700 hover:bg-ink-100"
@@ -67,7 +67,7 @@ export function Sidebar() {
               <Icon className="size-4" />
               <span className="flex-1">{item.label}</span>
               {badge !== null && badge > 0 ? (
-                <span className="text-[11px] tabular-nums bg-ink-100 text-ink-700 rounded-full px-1.5 py-0.5">
+                <span className="text-xs tabular-nums bg-ink-100 text-ink-700 rounded-full px-2 py-1">
                   {badge}
                 </span>
               ) : null}
@@ -79,18 +79,18 @@ export function Sidebar() {
       <div className="border-t border-ink-200 p-3 shrink-0">
         {email ? (
           <div className="flex items-center gap-2">
-            <div className="size-7 rounded-full bg-brand-600 text-white grid place-items-center text-[11px] font-semibold shrink-0">
+            <div className="size-7 rounded-full bg-brand-600 text-white grid place-items-center text-xs font-semibold shrink-0">
               {initials(email)}
             </div>
             <div className="flex-1 min-w-0">
               <div className="text-[12px] text-ink-800 truncate">{email}</div>
-              <div className="text-[10px] text-ink-500">
+              <div className="text-xs text-ink-500">
                 {taskCount} on board · {topicCount} ideas
               </div>
             </div>
             <button
               onClick={() => signOut({ callbackUrl: "/sign-in" })}
-              className="p-1.5 rounded text-ink-400 hover:text-ink-800 hover:bg-ink-100"
+              className="p-2 rounded text-ink-400 hover:text-ink-800 hover:bg-ink-100"
               title="Sign out"
               aria-label="Sign out"
             >
@@ -98,7 +98,7 @@ export function Sidebar() {
             </button>
           </div>
         ) : (
-          <div className="text-[11px] text-ink-500">Loading…</div>
+          <div className="text-xs text-ink-500">Loading…</div>
         )}
       </div>
     </aside>

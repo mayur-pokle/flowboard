@@ -302,9 +302,9 @@ export default function SettingsApiPage() {
       <div className="flex-1 overflow-auto scrollbar-thin px-8 py-6 max-w-5xl w-full">
         {profileCompleteness < 50 ? (
           <div className="card p-4 mb-5 border-amber-200 bg-amber-50/60 flex gap-3">
-            <AlertTriangle className="size-5 text-amber-600 shrink-0 mt-0.5" />
+            <AlertTriangle className="size-5 text-amber-600 shrink-0 mt-1" />
             <div>
-              <div className="text-sm font-semibold text-ink-900">
+              <div className="text-base font-semibold text-ink-900">
                 Add brand context for better topics
               </div>
               <p className="text-xs text-ink-700 mt-1 max-w-xl">
@@ -449,7 +449,7 @@ export default function SettingsApiPage() {
                 >
                   <div className="grid sm:grid-cols-[1fr_1fr_2fr_140px] gap-2">
                     <input
-                      className="input !py-1.5 text-sm"
+                      className="input !py-2 text-base"
                       value={c.name}
                       onChange={(e) =>
                         updateCompetitor(c.id, { name: e.target.value })
@@ -457,7 +457,7 @@ export default function SettingsApiPage() {
                       placeholder="Name"
                     />
                     <input
-                      className="input !py-1.5 text-sm font-mono"
+                      className="input !py-2 text-base font-mono"
                       value={c.url}
                       onChange={(e) =>
                         updateCompetitor(c.id, { url: e.target.value })
@@ -465,7 +465,7 @@ export default function SettingsApiPage() {
                       placeholder="https://…"
                     />
                     <input
-                      className="input !py-1.5 text-sm"
+                      className="input !py-2 text-base"
                       value={c.notes}
                       onChange={(e) =>
                         updateCompetitor(c.id, { notes: e.target.value })
@@ -473,7 +473,7 @@ export default function SettingsApiPage() {
                       placeholder="Why we win/lose against them"
                     />
                     <select
-                      className="input !py-1.5 text-sm"
+                      className="input !py-2 text-base"
                       value={c.tier}
                       onChange={(e) =>
                         updateCompetitor(c.id, {
@@ -497,7 +497,7 @@ export default function SettingsApiPage() {
                         href={c.url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="p-1.5 text-ink-400 hover:text-ink-700 rounded"
+                        className="p-2 text-ink-400 hover:text-ink-700 rounded"
                         aria-label="Visit website"
                       >
                         <ExternalLink className="size-4" />
@@ -505,7 +505,7 @@ export default function SettingsApiPage() {
                     ) : null}
                     <button
                       onClick={() => removeCompetitor(c.id)}
-                      className="p-1.5 text-ink-400 hover:text-rose-600 rounded"
+                      className="p-2 text-ink-400 hover:text-rose-600 rounded"
                       aria-label="Remove competitor"
                     >
                       <Trash2 className="size-4" />
@@ -518,24 +518,24 @@ export default function SettingsApiPage() {
 
           {/* Add new competitor */}
           <div className="rounded-md border border-dashed border-ink-300 p-3 bg-ink-50/40">
-            <div className="text-[11px] font-semibold uppercase tracking-wider text-ink-500 mb-2">
+            <div className="text-xs font-semibold uppercase tracking-wider text-ink-500 mb-2">
               Add competitor
             </div>
             <div className="grid sm:grid-cols-[1fr_1fr_2fr_140px_auto] gap-2">
               <input
-                className="input !py-1.5 text-sm"
+                className="input !py-2 text-base"
                 value={newCompetitorName}
                 onChange={(e) => setNewCompetitorName(e.target.value)}
                 placeholder="Numeric"
               />
               <input
-                className="input !py-1.5 text-sm font-mono"
+                className="input !py-2 text-base font-mono"
                 value={newCompetitorUrl}
                 onChange={(e) => setNewCompetitorUrl(e.target.value)}
                 placeholder="https://numeric.io"
               />
               <input
-                className="input !py-1.5 text-sm"
+                className="input !py-2 text-base"
                 value={newCompetitorNotes}
                 onChange={(e) => setNewCompetitorNotes(e.target.value)}
                 onKeyDown={(e) => {
@@ -544,7 +544,7 @@ export default function SettingsApiPage() {
                 placeholder="Strong on close automation; weak on FP&A."
               />
               <select
-                className="input !py-1.5 text-sm"
+                className="input !py-2 text-base"
                 value={newCompetitorTier}
                 onChange={(e) =>
                   setNewCompetitorTier(
@@ -693,7 +693,7 @@ export default function SettingsApiPage() {
                   </Badge>
                 )}
               </div>
-              <label className="text-xs font-medium text-ink-700 mb-1.5 block">
+              <label className="text-xs font-medium text-ink-700 mb-2 block">
                 Model
               </label>
               <ModelSelect
@@ -736,7 +736,7 @@ export default function SettingsApiPage() {
                   </Badge>
                 )}
               </div>
-              <label className="text-xs font-medium text-ink-700 mb-1.5 block">
+              <label className="text-xs font-medium text-ink-700 mb-2 block">
                 Model
               </label>
               <ModelSelect
@@ -774,7 +774,7 @@ export default function SettingsApiPage() {
           >
             <div className="flex items-center justify-between">
               <div>
-                <div className="text-xs font-medium text-ink-700 mb-0.5">
+                <div className="text-xs font-medium text-ink-700 mb-1">
                   Webhook
                 </div>
                 <Hint>
@@ -812,7 +812,7 @@ export default function SettingsApiPage() {
             title="Server-side env vars"
             description="Set in Vercel → Project → Environment Variables."
           >
-            <ul className="text-sm text-ink-700 grid grid-cols-2 gap-x-3 gap-y-1">
+            <ul className="text-base text-ink-700 grid grid-cols-2 gap-x-3 gap-y-1">
               {[
                 "OPENAI_API_KEY",
                 "OPENAI_MODEL",
@@ -834,7 +834,7 @@ export default function SettingsApiPage() {
                 "CRON_SECRET"
               ].map((k) => (
                 <li key={k}>
-                  <code className="bg-ink-100 px-1.5 py-0.5 rounded text-[10px] truncate block">
+                  <code className="bg-ink-100 px-2 py-1 rounded text-xs truncate block">
                     {k}
                   </code>
                 </li>
@@ -894,16 +894,16 @@ function Card({
   return (
     <section className="card p-4 mb-4">
       <div className="flex items-start justify-between gap-3 mb-3">
-        <div className="flex items-start gap-2.5">
+        <div className="flex items-start gap-3">
           {Icon ? (
-            <div className="size-7 rounded-md bg-ink-100 text-ink-700 grid place-items-center shrink-0 mt-0.5">
-              <Icon className="size-3.5" />
+            <div className="size-7 rounded-md bg-ink-100 text-ink-700 grid place-items-center shrink-0 mt-1">
+              <Icon className="size-4" />
             </div>
           ) : null}
           <div>
-            <h2 className="text-sm font-semibold text-ink-900">{title}</h2>
+            <h2 className="text-base font-semibold text-ink-900">{title}</h2>
             {description ? (
-              <p className="text-xs text-ink-500 mt-0.5 max-w-xl">
+              <p className="text-xs text-ink-500 mt-1 max-w-xl">
                 {description}
               </p>
             ) : null}
@@ -931,7 +931,7 @@ function Field({
 }) {
   return (
     <div>
-      <div className="flex items-center justify-between mb-1.5">
+      <div className="flex items-center justify-between mb-2">
         <label className="text-xs font-medium text-ink-700">{label}</label>
         {badge}
       </div>
@@ -941,7 +941,7 @@ function Field({
 }
 
 function Hint({ children }: { children: React.ReactNode }) {
-  return <p className="text-[11px] text-ink-500 mt-1.5">{children}</p>;
+  return <p className="text-xs text-ink-500 mt-2">{children}</p>;
 }
 
 function ProviderOption({
@@ -970,17 +970,17 @@ function ProviderOption({
           : "border-ink-200 bg-white hover:border-ink-300"
       }`}
     >
-      <div className="flex items-center justify-between mb-0.5">
-        <span className="text-sm font-medium text-ink-900">{title}</span>
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-base font-medium text-ink-900">{title}</span>
         {selected ? (
           <span className="size-2 rounded-full bg-brand-600" />
         ) : (
           <span className="size-2 rounded-full border border-ink-300" />
         )}
       </div>
-      <div className="text-[11px] text-ink-500">{subtitle}</div>
+      <div className="text-xs text-ink-500">{subtitle}</div>
       {!configured ? (
-        <div className="text-[10px] text-amber-700 mt-1.5">
+        <div className="text-xs text-amber-700 mt-2">
           Key not configured server-side
         </div>
       ) : null}
@@ -1067,7 +1067,7 @@ function ModelSelect({
         ) : (
           <div className="flex gap-2 flex-1">
             <input
-              className="input font-mono text-sm flex-1"
+              className="input font-mono text-base flex-1"
               value={value}
               onChange={(e) => onChange(e.target.value)}
               placeholder={fallback}
@@ -1101,11 +1101,11 @@ function ModelSelect({
             <Sparkles className="size-4" />
             {discoverOpen && discovered ? (
               <>
-                Hide list <ChevronUp className="size-3.5" />
+                Hide list <ChevronUp className="size-4" />
               </>
             ) : (
               <>
-                Discover <ChevronDown className="size-3.5" />
+                Discover <ChevronDown className="size-4" />
               </>
             )}
           </button>
@@ -1129,7 +1129,7 @@ function ModelSelect({
             </div>
           ) : discovered && discovered.length > 0 ? (
             <>
-              <div className="text-[11px] text-ink-500 mb-2">
+              <div className="text-xs text-ink-500 mb-2">
                 {discovered.length} model{discovered.length === 1 ? "" : "s"}{" "}
                 available for your key. Click one to use it.
               </div>
@@ -1137,14 +1137,14 @@ function ModelSelect({
                 {discovered.map((m) => (
                   <li
                     key={m.id}
-                    className="flex items-center justify-between gap-2 py-1 px-1.5 rounded hover:bg-white"
+                    className="flex items-center justify-between gap-2 py-1 px-2 rounded hover:bg-white"
                   >
                     <div className="min-w-0">
                       <div className="font-mono text-xs text-ink-900 truncate">
                         {m.id}
                       </div>
                       {m.displayName && m.displayName !== m.id ? (
-                        <div className="text-[11px] text-ink-500 truncate">
+                        <div className="text-xs text-ink-500 truncate">
                           {m.displayName}
                         </div>
                       ) : null}
@@ -1156,7 +1156,7 @@ function ModelSelect({
                         setCustomMode(true);
                         setDiscoverOpen(false);
                       }}
-                      className="text-[11px] font-medium text-brand-700 hover:text-brand-800 px-2 py-1 rounded hover:bg-brand-50 shrink-0"
+                      className="text-xs font-medium text-brand-700 hover:text-brand-800 px-2 py-1 rounded hover:bg-brand-50 shrink-0"
                     >
                       Use this
                     </button>

@@ -130,7 +130,11 @@ export interface ExistingContent {
   createdAt: string;
 }
 
-export type PrimaryProvider = "auto" | "openai" | "gemini";
+export type PrimaryProvider =
+  | "auto"
+  | "openai"
+  | "gemini"
+  | "anthropic";
 
 export interface Settings {
   // AI providers + integrations
@@ -138,6 +142,8 @@ export interface Settings {
   openaiModel: string;
   geminiKey: string;
   geminiModel: string;
+  anthropicKey: string;
+  anthropicModel: string;
   primaryProvider: PrimaryProvider;
   slackWebhook: string;
 

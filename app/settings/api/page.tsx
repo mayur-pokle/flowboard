@@ -71,6 +71,23 @@ const OPENAI_MODELS = [
 // and Google account — if the picked model returns "Model not available," try
 // another variant. As of May 2026, free tier covers 2.5 Flash, 2.5 Flash-Lite,
 // 3 Flash, and 3.1 Flash-Lite (Pro tiers are paid-only since April 2026).
+// Anthropic Claude models — newest first.
+const ANTHROPIC_MODELS = [
+  // ── Claude 4.x (current as of May 2026) ──
+  { value: "claude-opus-4-6", label: "Claude Opus 4.6 — flagship reasoning (premium)" },
+  { value: "claude-sonnet-4-6", label: "Claude Sonnet 4.6 — balanced (recommended for content)" },
+  { value: "claude-haiku-4-5", label: "Claude Haiku 4.5 — fast + cheap (recommended)" },
+  { value: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5 (pinned 2025-10-01)" },
+
+  // ── Claude 3.5 (legacy but widely available) ──
+  { value: "claude-3-5-sonnet-20241022", label: "Claude 3.5 Sonnet (legacy, balanced)" },
+  { value: "claude-3-5-haiku-20241022", label: "Claude 3.5 Haiku (legacy, cheap)" },
+
+  // ── Claude 3 (oldest still supported) ──
+  { value: "claude-3-opus-20240229", label: "Claude 3 Opus (legacy, premium)" },
+  { value: "claude-3-haiku-20240307", label: "Claude 3 Haiku (legacy, cheapest)" }
+];
+
 const GEMINI_MODELS = [
   // ── Gemini 3.5 (newest — launched at Google I/O May 2026) ──
   { value: "gemini-3.5-flash", label: "Gemini 3.5 Flash — newest, 1M context (recommended)" },
@@ -126,6 +143,7 @@ export default function SettingsApiPage() {
   // Local form state, hydrated from the store once.
   const [openaiModel, setOpenaiModel] = useState("");
   const [geminiModel, setGeminiModel] = useState("");
+  const [anthropicModel, setAnthropicModel] = useState("");
   const [primaryProvider, setPrimaryProvider] = useState<PrimaryProvider>("auto");
   const [companyName, setCompanyName] = useState("");
   const [websiteUrl, setWebsiteUrl] = useState("");
@@ -153,6 +171,7 @@ export default function SettingsApiPage() {
     if (!hydrated) return;
     setOpenaiModel(settings.openaiModel);
     setGeminiModel(settings.geminiModel);
+    setAnthropicModel(settings.anthropicModel || "claude-haiku-4-5");
     setPrimaryProvider(settings.primaryProvider);
     setCompanyName(settings.companyName);
     setWebsiteUrl(settings.websiteUrl);
@@ -616,7 +635,7 @@ export default function SettingsApiPage() {
         >
           {/* Provider selector */}
           <Field label="Primary provider">
-            <div className="grid sm:grid-cols-3 gap-2">
+            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-2">
               <ProviderOption
                 value="auto"
                 current={primaryProvider}
@@ -630,9 +649,11 @@ export default function SettingsApiPage() {
                   }
                 }}
                 title="Auto"
-                subtitle="OpenAI, fall back to Gemini"
+                subtitle="OpenAI → Gemini → Anthropic"
                 configured={
-                  serverConfigured.openaiKey || serverConfigured.geminiKey
+                  serverConfigured.openaiKey ||
+                  serverConfigured.geminiKey ||
+                  serverConfigured.anthropicKey
                 }
               />
               <ProviderOption
@@ -667,16 +688,33 @@ export default function SettingsApiPage() {
                 subtitle="No fallback"
                 configured={serverConfigured.geminiKey}
               />
+              <ProviderOption
+                value="anthropic"
+                current={primaryProvider}
+                onSelect={async () => {
+                  setPrimaryProvider("anthropic");
+                  try {
+                    await updateSettings({ primaryProvider: "anthropic" });
+                    toast("Provider set to Anthropic only", "success");
+                  } catch (err) {
+                    toast((err as Error).message, "error");
+                  }
+                }}
+                title="Anthropic only"
+                subtitle="Claude — no fallback"
+                configured={serverConfigured.anthropicKey}
+              />
             </div>
             <Hint>
               If the selected provider fails (rate limit, bad model, etc.), the
-              app falls back to high-quality mock data. "Auto" tries OpenAI first
-              then Gemini.
+              app falls back to high-quality mock data. &quot;Auto&quot; tries
+              OpenAI → Gemini → Anthropic in order, which is the right pick when
+              you&apos;re hitting 429s on one provider.
             </Hint>
           </Field>
 
-          {/* OpenAI + Gemini side-by-side */}
-          <div className="grid lg:grid-cols-2 gap-3 mt-4">
+          {/* OpenAI + Gemini + Anthropic — three cards side-by-side on wide screens */}
+          <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-3 mt-4">
             {/* OpenAI card */}
             <div className="rounded-md border border-ink-200 bg-ink-50/60 p-3">
               <div className="flex items-center justify-between mb-2">
@@ -762,6 +800,51 @@ export default function SettingsApiPage() {
                 available,&quot; click <strong>Discover</strong>.
               </Hint>
             </div>
+
+            {/* Anthropic card */}
+            <div className="rounded-md border border-ink-200 bg-ink-50/60 p-3">
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-xs font-medium text-ink-700">
+                  Anthropic
+                </div>
+                {serverConfigured.anthropicKey ? (
+                  <Badge tone="success">
+                    <CheckCircle2 className="size-3" />
+                    Key set
+                  </Badge>
+                ) : (
+                  <Badge tone="neutral">
+                    <XCircle className="size-3" />
+                    Key not set
+                  </Badge>
+                )}
+              </div>
+              <label className="text-xs font-medium text-ink-700 mb-2 block">
+                Model
+              </label>
+              <ModelSelect
+                value={anthropicModel}
+                options={ANTHROPIC_MODELS}
+                onChange={async (v) => {
+                  setAnthropicModel(v);
+                  if (v !== settings.anthropicModel) {
+                    try {
+                      await updateSettings({ anthropicModel: v });
+                      toast(`Anthropic model set to ${v}`, "success");
+                    } catch (err) {
+                      toast((err as Error).message, "error");
+                    }
+                  }
+                }}
+                fallback="claude-haiku-4-5"
+                discoverEndpoint="/api/list-models/anthropic"
+                providerLabel="Anthropic"
+              />
+              <Hint>
+                Set <code>ANTHROPIC_API_KEY</code> in Vercel env. Get one at{" "}
+                console.anthropic.com → API Keys.
+              </Hint>
+            </div>
           </div>
         </Card>
 
@@ -818,6 +901,8 @@ export default function SettingsApiPage() {
                 "OPENAI_MODEL",
                 "GEMINI_API_KEY",
                 "GEMINI_MODEL",
+                "ANTHROPIC_API_KEY",
+                "ANTHROPIC_MODEL",
                 "SLACK_WEBHOOK_URL",
                 "BRAND_COMPANY_NAME",
                 "BRAND_WEBSITE_URL",
@@ -1124,7 +1209,15 @@ function ModelSelect({
               <div className="font-medium mb-1">Could not fetch models</div>
               <div className="text-rose-600">{discoverError}</div>
               <p className="text-ink-600 mt-2">
-                Check that your <code>{providerLabel === "OpenAI" ? "OPENAI_API_KEY" : "GEMINI_API_KEY"}</code> is set in Vercel and valid.
+                Check that your{" "}
+                <code>
+                  {providerLabel === "OpenAI"
+                    ? "OPENAI_API_KEY"
+                    : providerLabel === "Anthropic"
+                    ? "ANTHROPIC_API_KEY"
+                    : "GEMINI_API_KEY"}
+                </code>{" "}
+                is set in Vercel and valid.
               </p>
             </div>
           ) : discovered && discovered.length > 0 ? (

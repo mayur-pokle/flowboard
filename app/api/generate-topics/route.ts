@@ -139,11 +139,14 @@ export async function POST(req: Request) {
   const keys: AIKeys = {
     openai: req.headers.get("x-openai-key") || undefined,
     gemini: req.headers.get("x-gemini-key") || undefined,
+    anthropic: req.headers.get("x-anthropic-key") || undefined,
     openaiModel: req.headers.get("x-openai-model") || undefined,
     geminiModel: req.headers.get("x-gemini-model") || undefined,
+    anthropicModel: req.headers.get("x-anthropic-model") || undefined,
     primaryProvider:
       primaryProviderHeader === "openai" ||
       primaryProviderHeader === "gemini" ||
+      primaryProviderHeader === "anthropic" ||
       primaryProviderHeader === "auto"
         ? primaryProviderHeader
         : undefined
@@ -153,7 +156,10 @@ export async function POST(req: Request) {
     const result = await generateTopics(ctx, count, keys);
     const keysSeen = {
       openai: Boolean(process.env.OPENAI_API_KEY || keys.openai),
-      gemini: Boolean(process.env.GEMINI_API_KEY || keys.gemini)
+      gemini: Boolean(process.env.GEMINI_API_KEY || keys.gemini),
+      anthropic: Boolean(
+        process.env.ANTHROPIC_API_KEY || keys.anthropic
+      )
     };
     return NextResponse.json({ ...result, keysSeen });
   } catch (err) {

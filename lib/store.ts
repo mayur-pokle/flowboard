@@ -119,6 +119,7 @@ interface Store extends AppState {
   serverConfigured: {
     openaiKey: boolean;
     geminiKey: boolean;
+    anthropicKey: boolean;
     slackWebhook: boolean;
   };
 }
@@ -129,6 +130,8 @@ const defaultSettings: Settings = {
   openaiModel: "gpt-4o-mini",
   geminiKey: "",
   geminiModel: "gemini-2.0-flash",
+  anthropicKey: "",
+  anthropicModel: "claude-haiku-4-5",
   primaryProvider: "auto",
   slackWebhook: "",
 
@@ -187,7 +190,12 @@ async function api<T>(
 export const useStore = create<Store>()((set, get) => ({
   ...initialState,
   hydrated: false,
-  serverConfigured: { openaiKey: false, geminiKey: false, slackWebhook: false },
+  serverConfigured: {
+    openaiKey: false,
+    geminiKey: false,
+    anthropicKey: false,
+    slackWebhook: false
+  },
   commentsByTaskId: {},
 
   // ───────── Comments ─────────
@@ -311,6 +319,9 @@ export const useStore = create<Store>()((set, get) => ({
           topicsToAvoid: s.topicsToAvoid,
           openaiModel: s.openaiModel,
           geminiModel: s.geminiModel,
+          anthropicModel:
+            (s as unknown as { anthropicModel?: string }).anthropicModel ||
+            "claude-haiku-4-5",
           primaryProvider:
             (s as unknown as { primaryProvider?: string }).primaryProvider ===
               "openai" ||
@@ -587,6 +598,7 @@ export const useStore = create<Store>()((set, get) => ({
         "topicsToAvoid",
         "openaiModel",
         "geminiModel",
+        "anthropicModel",
         "primaryProvider"
       ] as const) {
         if (patch[k] !== undefined) serverPatch[k] = patch[k];

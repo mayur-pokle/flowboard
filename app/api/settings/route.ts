@@ -25,6 +25,7 @@ const defaults = {
   topicsToAvoid: "",
   openaiModel: "gpt-4o-mini",
   geminiModel: "gemini-2.0-flash",
+  anthropicModel: "claude-haiku-4-5",
   primaryProvider: "auto"
 };
 
@@ -56,6 +57,7 @@ export const GET = withAuth(async () => {
       serverConfigured: {
         openaiKey: Boolean(process.env.OPENAI_API_KEY),
         geminiKey: Boolean(process.env.GEMINI_API_KEY),
+        anthropicKey: Boolean(process.env.ANTHROPIC_API_KEY),
         slackWebhook: Boolean(process.env.SLACK_WEBHOOK_URL)
       }
     });
@@ -82,6 +84,7 @@ export const PATCH = withAuth(async (_user, req) => {
       "topicsToAvoid",
       "openaiModel",
       "geminiModel",
+      "anthropicModel",
       "primaryProvider"
     ] as const;
     const patch: Record<string, unknown> = { updatedAt: new Date() };

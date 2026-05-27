@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import Anthropic from "@anthropic-ai/sdk";
 import type {
   ContentType,
   Effort,
@@ -51,37 +52,56 @@ export interface BrandContext {
   existingContent?: ExistingContentCtx[];
 }
 
-export type PrimaryProvider = "auto" | "openai" | "gemini";
+export type PrimaryProvider =
+  | "auto"
+  | "openai"
+  | "gemini"
+  | "anthropic";
 
 export interface AIKeys {
   openai?: string;
   gemini?: string;
+  anthropic?: string;
   openaiModel?: string;
   geminiModel?: string;
+  anthropicModel?: string;
   primaryProvider?: PrimaryProvider;
 }
 
 const DEFAULT_OPENAI_MODEL = "gpt-4o-mini";
 const DEFAULT_GEMINI_MODEL = "gemini-2.0-flash";
+const DEFAULT_ANTHROPIC_MODEL = "claude-haiku-4-5";
 
 function pickKeys(headerKeys: AIKeys | undefined): AIKeys {
   return {
     openai: process.env.OPENAI_API_KEY || headerKeys?.openai || "",
     gemini: process.env.GEMINI_API_KEY || headerKeys?.gemini || "",
+    anthropic:
+      process.env.ANTHROPIC_API_KEY || headerKeys?.anthropic || "",
     openaiModel:
       process.env.OPENAI_MODEL || headerKeys?.openaiModel || DEFAULT_OPENAI_MODEL,
     geminiModel:
       process.env.GEMINI_MODEL || headerKeys?.geminiModel || DEFAULT_GEMINI_MODEL,
+    anthropicModel:
+      process.env.ANTHROPIC_MODEL ||
+      headerKeys?.anthropicModel ||
+      DEFAULT_ANTHROPIC_MODEL,
     primaryProvider: headerKeys?.primaryProvider || "auto"
   };
 }
 
 // Returns the order in which to try providers based on the user's preference.
-function providerOrder(p: PrimaryProvider | undefined): Array<"openai" | "gemini"> {
+// In "auto" mode, when one provider is rate-limited, the next provider is
+// tried automatically — so adding Anthropic third helps when OpenAI + Gemini
+// are both 429.
+function providerOrder(
+  p: PrimaryProvider | undefined
+): Array<"openai" | "gemini" | "anthropic"> {
   if (p === "openai") return ["openai"];
   if (p === "gemini") return ["gemini"];
-  // "auto" — OpenAI first, Gemini fallback.
-  return ["openai", "gemini"];
+  if (p === "anthropic") return ["anthropic"];
+  // "auto" — OpenAI first, Gemini, then Anthropic.
+  return ["openai", "gemini", "anthropic"];
 }
 
 // ============================================================
@@ -331,6 +351,13 @@ const OPENAI_FALLBACK_CHAIN = [
   "gpt-3.5-turbo"
 ];
 
+const ANTHROPIC_FALLBACK_CHAIN = [
+  "claude-haiku-4-5",
+  "claude-haiku-4-5-20251001",
+  "claude-3-5-haiku-20241022",
+  "claude-3-haiku-20240307"
+];
+
 // Helper: run an async fn against a chain of model IDs. Returns the first
 // success along with the model that worked. Throws the last error if every
 // candidate fails.
@@ -371,7 +398,7 @@ export async function generateTopics(
   keys?: AIKeys
 ): Promise<{
   topics: Topic[];
-  provider: "openai" | "gemini" | "mock";
+  provider: "openai" | "gemini" | "anthropic" | "mock";
   warnings: string[];
 }> {
   const k = pickKeys(keys);
@@ -379,7 +406,7 @@ export async function generateTopics(
   const order = providerOrder(k.primaryProvider);
 
   let generated: Topic[] = [];
-  let provider: "openai" | "gemini" | "mock" = "mock";
+  let provider: "openai" | "gemini" | "anthropic" | "mock" = "mock";
 
   for (const which of order) {
     if (which === "openai" && k.openai) {
@@ -428,6 +455,29 @@ export async function generateTopics(
         const msg = describeError(err);
         console.error("[ai] Gemini topics failed:", msg);
         warnings.push(`Gemini: ${msg}`);
+      }
+    }
+    if (which === "anthropic" && k.anthropic) {
+      try {
+        const { result: raw, modelUsed, triedAndFailed } =
+          await withModelFallbacks(
+            k.anthropicModel || DEFAULT_ANTHROPIC_MODEL,
+            ANTHROPIC_FALLBACK_CHAIN,
+            (model) =>
+              generateTopicsAnthropic(ctx, count, k.anthropic!, model)
+          );
+        generated = normalizeTopics(raw);
+        provider = "anthropic";
+        if (triedAndFailed.length > 0) {
+          warnings.push(
+            `Anthropic: configured model "${triedAndFailed[0]}" not available — used "${modelUsed}" instead. Update in Settings → AI providers to make this permanent.`
+          );
+        }
+        break;
+      } catch (err) {
+        const msg = describeError(err);
+        console.error("[ai] Anthropic topics failed:", msg);
+        warnings.push(`Anthropic: ${msg}`);
       }
     }
   }
@@ -504,6 +554,43 @@ async function generateTopicsGemini(
   const text = result.response.text();
   const parsed = JSON.parse(text);
   return Array.isArray(parsed?.topics) ? parsed.topics : [];
+}
+
+async function generateTopicsAnthropic(
+  ctx: BrandContext,
+  count: number,
+  apiKey: string,
+  modelName: string
+): Promise<unknown[]> {
+  const client = new Anthropic({ apiKey });
+  // Claude doesn't have a native JSON mode like OpenAI; we get reliable JSON
+  // by asking for it in the system prompt and stripping any code-fence noise.
+  const message = await client.messages.create({
+    model: modelName,
+    max_tokens: 4096,
+    temperature: 0.8,
+    system: TOPIC_SYSTEM_PROMPT,
+    messages: [
+      {
+        role: "user",
+        content: buildTopicUserPrompt(ctx, count)
+      }
+    ]
+  });
+  const text = message.content
+    .filter((b): b is Anthropic.TextBlock => b.type === "text")
+    .map((b) => b.text)
+    .join("");
+  const cleaned = stripJsonFence(text);
+  const parsed = JSON.parse(cleaned);
+  return Array.isArray(parsed?.topics) ? parsed.topics : [];
+}
+
+// Claude occasionally wraps JSON in ```json ... ``` even when asked not to.
+function stripJsonFence(text: string): string {
+  const trimmed = text.trim();
+  const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+  return fenced ? fenced[1].trim() : trimmed;
 }
 
 function normalizeTopics(raw: unknown[]): Topic[] {
@@ -1019,7 +1106,7 @@ export async function generateContent(
   keys?: AIKeys
 ): Promise<{
   content: GeneratedContent;
-  provider: "openai" | "gemini" | "mock";
+  provider: "openai" | "gemini" | "anthropic" | "mock";
   warnings: string[];
 }> {
   const k = pickKeys(keys);
@@ -1077,6 +1164,31 @@ export async function generateContent(
         warnings.push(`Gemini: ${msg}`);
       }
     }
+    if (which === "anthropic" && k.anthropic) {
+      try {
+        const { result: raw, modelUsed, triedAndFailed } =
+          await withModelFallbacks(
+            k.anthropicModel || DEFAULT_ANTHROPIC_MODEL,
+            ANTHROPIC_FALLBACK_CHAIN,
+            (model) =>
+              generateContentAnthropic(topic, ctx, k.anthropic!, model)
+          );
+        if (triedAndFailed.length > 0) {
+          warnings.push(
+            `Anthropic: configured model "${triedAndFailed[0]}" not available — used "${modelUsed}" instead. Update in Settings → AI providers to make this permanent.`
+          );
+        }
+        return {
+          content: normalizeContent(raw, topic),
+          provider: "anthropic",
+          warnings
+        };
+      } catch (err) {
+        const msg = describeError(err);
+        console.error("[ai] Anthropic content failed:", msg);
+        warnings.push(`Anthropic: ${msg}`);
+      }
+    }
   }
 
   return { content: mockContent(topic, ctx), provider: "mock", warnings };
@@ -1115,6 +1227,33 @@ async function generateContentGemini(
   const prompt = `${CONTENT_SYSTEM_PROMPT}\n\n${buildContentUserPrompt(topic, ctx)}`;
   const result = await model.generateContent(prompt);
   return JSON.parse(result.response.text());
+}
+
+async function generateContentAnthropic(
+  topic: Topic,
+  ctx: BrandContext,
+  apiKey: string,
+  modelName: string
+): Promise<unknown> {
+  const client = new Anthropic({ apiKey });
+  const message = await client.messages.create({
+    model: modelName,
+    // Long-form content runs ~1000-2000 words → 8192 tokens covers it.
+    max_tokens: 8192,
+    temperature: 0.7,
+    system: CONTENT_SYSTEM_PROMPT,
+    messages: [
+      {
+        role: "user",
+        content: buildContentUserPrompt(topic, ctx)
+      }
+    ]
+  });
+  const text = message.content
+    .filter((b): b is Anthropic.TextBlock => b.type === "text")
+    .map((b) => b.text)
+    .join("");
+  return JSON.parse(stripJsonFence(text));
 }
 
 function normalizeContent(raw: unknown, topic: Topic): GeneratedContent {

@@ -74,6 +74,8 @@ export function CardDetailPanel({ task }: { task: Task }) {
         headers["x-openai-model"] = settings.openaiModel;
       if (settings.geminiModel)
         headers["x-gemini-model"] = settings.geminiModel;
+      if (settings.anthropicModel)
+        headers["x-anthropic-model"] = settings.anthropicModel;
       if (settings.primaryProvider)
         headers["x-primary-provider"] = settings.primaryProvider;
       const res = await fetch("/api/generate-content", {

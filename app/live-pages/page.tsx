@@ -20,39 +20,102 @@ import type {
   LivePageStatus
 } from "@/lib/types";
 
-const STATUSES: { value: LivePageStatus; label: string }[] = [
-  { value: "scheduled", label: "Scheduled" },
-  { value: "published", label: "Published" },
-  { value: "updating", label: "Updating" },
-  { value: "needs_refresh", label: "Needs refresh" },
-  { value: "retired", label: "Retired" }
+// ── Color palettes for the pill columns ──────────────────────────────────
+// Tone string is a Tailwind class set so each pill has a coherent
+// background + text + ring combo. Matches the rest of the app's badge styles.
+
+const STATUS_OPTIONS: {
+  value: LivePageStatus;
+  label: string;
+  tone: string;
+}[] = [
+  {
+    value: "scheduled",
+    label: "Scheduled",
+    tone: "bg-ink-100 text-ink-700 ring-1 ring-inset ring-ink-200"
+  },
+  {
+    value: "published",
+    label: "Published",
+    tone: "bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-200"
+  },
+  {
+    value: "updating",
+    label: "Updating",
+    tone: "bg-brand-50 text-brand-700 ring-1 ring-inset ring-brand-200"
+  },
+  {
+    value: "needs_refresh",
+    label: "Needs refresh",
+    tone: "bg-amber-50 text-amber-800 ring-1 ring-inset ring-amber-200"
+  },
+  {
+    value: "retired",
+    label: "Retired",
+    tone: "bg-rose-50 text-rose-700 ring-1 ring-inset ring-rose-200"
+  }
 ];
 
-const STATUS_TONE: Record<
-  LivePageStatus,
-  "neutral" | "info" | "warn" | "success" | "danger"
-> = {
-  scheduled: "neutral",
-  published: "success",
-  updating: "info",
-  needs_refresh: "warn",
-  retired: "danger"
-};
-
-const CONTENT_TYPES: ContentType[] = [
-  "Calculator",
-  "Template",
-  "Guide",
-  "Whitepaper",
-  "Checklist",
-  "Framework"
+const TYPE_OPTIONS: { value: ContentType; label: string; tone: string }[] = [
+  {
+    value: "Calculator",
+    label: "Calculator",
+    tone: "bg-violet-50 text-violet-700 ring-1 ring-inset ring-violet-200"
+  },
+  {
+    value: "Template",
+    label: "Template",
+    tone: "bg-sky-50 text-sky-700 ring-1 ring-inset ring-sky-200"
+  },
+  {
+    value: "Guide",
+    label: "Guide",
+    tone: "bg-blue-50 text-blue-700 ring-1 ring-inset ring-blue-200"
+  },
+  {
+    value: "Whitepaper",
+    label: "Whitepaper",
+    tone: "bg-indigo-50 text-indigo-700 ring-1 ring-inset ring-indigo-200"
+  },
+  {
+    value: "Checklist",
+    label: "Checklist",
+    tone: "bg-teal-50 text-teal-700 ring-1 ring-inset ring-teal-200"
+  },
+  {
+    value: "Framework",
+    label: "Framework",
+    tone: "bg-fuchsia-50 text-fuchsia-700 ring-1 ring-inset ring-fuchsia-200"
+  }
 ];
 
-const INTENTS = [
-  "informational",
-  "commercial",
-  "transactional",
-  "navigational"
+const INTENT_OPTIONS: { value: string; label: string; tone: string }[] = [
+  {
+    value: "",
+    label: "—",
+    tone:
+      "bg-transparent text-ink-400 ring-1 ring-inset ring-dashed ring-ink-200"
+  },
+  {
+    value: "informational",
+    label: "Informational",
+    tone: "bg-slate-100 text-slate-700 ring-1 ring-inset ring-slate-200"
+  },
+  {
+    value: "commercial",
+    label: "Commercial",
+    tone: "bg-amber-50 text-amber-800 ring-1 ring-inset ring-amber-200"
+  },
+  {
+    value: "transactional",
+    label: "Transactional",
+    tone: "bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-200"
+  },
+  {
+    value: "navigational",
+    label: "Navigational",
+    tone: "bg-cyan-50 text-cyan-700 ring-1 ring-inset ring-cyan-200"
+  }
 ];
 
 export default function LivePagesPage() {
@@ -225,7 +288,7 @@ export default function LivePagesPage() {
           className="input !w-auto !py-2"
         >
           <option value="all">All statuses</option>
-          {STATUSES.map((s) => (
+          {STATUS_OPTIONS.map((s) => (
             <option key={s.value} value={s.value}>
               {s.label}
             </option>
@@ -409,93 +472,54 @@ function Row({
         />
       </Td>
       <Td>
-        <div className="flex items-center gap-2 min-w-0">
-          <CellInput
-            value={page.url}
-            onChange={(v) => onUpdate({ url: v })}
-            placeholder="https://…"
-            className="font-mono text-xs"
-          />
-          {page.url ? (
-            <a
-              href={page.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="p-1 text-ink-400 hover:text-ink-700 rounded shrink-0"
-              aria-label="Open"
-            >
-              <ExternalLink className="size-4" />
-            </a>
-          ) : null}
-        </div>
+        <UrlCell
+          value={page.url}
+          onChange={(v) => onUpdate({ url: v })}
+        />
       </Td>
       <Td>
-        <CellInput
+        <KeywordCell
           value={page.targetKeyword}
           onChange={(v) => onUpdate({ targetKeyword: v })}
-          placeholder="target keyword"
-          className="font-mono text-xs"
         />
       </Td>
       <Td>
-        <CellSelect
+        <PillSelect
           value={page.contentType}
+          options={TYPE_OPTIONS}
           onChange={(v) => onUpdate({ contentType: v as ContentType })}
-          options={CONTENT_TYPES.map((t) => ({ value: t, label: t }))}
         />
       </Td>
       <Td>
-        <CellSelect
+        <PillSelect
           value={page.searchIntent}
+          options={INTENT_OPTIONS}
           onChange={(v) => onUpdate({ searchIntent: v })}
-          options={[
-            { value: "", label: "—" },
-            ...INTENTS.map((i) => ({ value: i, label: i }))
-          ]}
         />
       </Td>
       <Td>
-        <StatusCell
+        <PillSelect
           value={page.status}
-          onChange={(v) => onUpdate({ status: v })}
+          options={STATUS_OPTIONS}
+          onChange={(v) => onUpdate({ status: v as LivePageStatus })}
         />
       </Td>
       <Td>
-        <input
-          type="date"
-          className={CELL_INPUT_CLASS}
-          value={page.publishDate ? page.publishDate.slice(0, 10) : ""}
-          onChange={(e) =>
-            onUpdate({
-              publishDate: e.target.value
-                ? new Date(e.target.value).toISOString()
-                : undefined
-            })
-          }
+        <DateCell
+          value={page.publishDate}
+          onChange={(v) => onUpdate({ publishDate: v })}
         />
       </Td>
       <Td>
-        <input
-          type="date"
-          className={CELL_INPUT_CLASS}
-          value={
-            page.lastReviewedDate ? page.lastReviewedDate.slice(0, 10) : ""
-          }
-          onChange={(e) =>
-            onUpdate({
-              lastReviewedDate: e.target.value
-                ? new Date(e.target.value).toISOString()
-                : undefined
-            })
-          }
-          title="Last time this page was reviewed for accuracy / SEO health"
+        <DateCell
+          value={page.lastReviewedDate}
+          onChange={(v) => onUpdate({ lastReviewedDate: v })}
         />
       </Td>
       <Td>
-        <CellInput
+        <OwnerCell
           value={page.owner}
           onChange={(v) => onUpdate({ owner: v })}
-          placeholder="—"
         />
       </Td>
       <Td>
@@ -648,32 +672,237 @@ function CellNumber({
         const n = Number(draft);
         if (Number.isFinite(n) && n !== value) onChange(n);
       }}
-      className={`${CELL_INPUT_CLASS} text-right tabular-nums`}
+      placeholder="—"
+      className={`${CELL_INPUT_CLASS} text-right tabular-nums placeholder:text-ink-300 placeholder:font-normal`}
     />
   );
 }
 
-function CellSelect({
+// ── PillSelect ─────────────────────────────────────────────────────────
+// Renders the current value as a colored pill, with an invisible native
+// <select> on top so clicking opens the browser's native dropdown. Gives
+// us visual polish (colored chips) without any custom popover code, while
+// remaining keyboard-accessible.
+function PillSelect<T extends string>({
   value,
-  onChange,
-  options
+  options,
+  onChange
+}: {
+  value: T;
+  options: { value: T; label: string; tone: string }[];
+  onChange: (next: T) => void;
+}) {
+  const current =
+    options.find((o) => o.value === value) || options[0];
+  return (
+    <div className="relative inline-flex max-w-full">
+      <span
+        className={
+          "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium truncate cursor-pointer transition " +
+          current.tone
+        }
+        title={current.label}
+      >
+        {current.label}
+      </span>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value as T)}
+        className="absolute inset-0 opacity-0 cursor-pointer"
+        aria-label="Change value"
+      >
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+// ── DateCell ───────────────────────────────────────────────────────────
+// Display the date in a human-readable format ("Apr 5, 2026") and overlay
+// an invisible native date input so clicking opens the browser date picker.
+function DateCell({
+  value,
+  onChange
+}: {
+  value: string | undefined;
+  onChange: (next: string | undefined) => void;
+}) {
+  const display = value
+    ? new Date(value).toLocaleDateString(undefined, {
+        month: "short",
+        day: "numeric",
+        year: "numeric"
+      })
+    : "";
+  return (
+    <div className="relative inline-flex max-w-full">
+      <span
+        className={
+          "block w-full rounded px-2 py-1.5 text-base cursor-pointer transition " +
+          (display
+            ? "text-ink-800 hover:bg-ink-100"
+            : "text-ink-400 italic hover:bg-ink-100")
+        }
+      >
+        {display || "Pick date"}
+      </span>
+      <input
+        type="date"
+        value={value ? value.slice(0, 10) : ""}
+        onChange={(e) =>
+          onChange(
+            e.target.value
+              ? new Date(e.target.value).toISOString()
+              : undefined
+          )
+        }
+        className="absolute inset-0 opacity-0 cursor-pointer"
+        aria-label="Pick date"
+      />
+    </div>
+  );
+}
+
+// ── OwnerCell ──────────────────────────────────────────────────────────
+// Avatar circle with initials + editable name. Click anywhere in the cell
+// to edit. Renders a placeholder dashed circle when empty.
+function OwnerCell({
+  value,
+  onChange
 }: {
   value: string;
   onChange: (next: string) => void;
-  options: { value: string; label: string }[];
 }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+  if (!editing && draft !== value) setDraft(value);
+
+  const initial = (() => {
+    if (!value) return "";
+    const local = value.includes("@") ? value.split("@")[0] : value;
+    const parts = local.split(/[.\-_\s]/).filter(Boolean);
+    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+    return (local[0] || "").toUpperCase();
+  })();
+
+  if (editing) {
+    return (
+      <input
+        type="text"
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={() => {
+          setEditing(false);
+          if (draft !== value) onChange(draft);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+        }}
+        autoFocus
+        className={CELL_INPUT_CLASS}
+      />
+    );
+  }
   return (
-    <select
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      className={CELL_INPUT_CLASS}
+    <button
+      type="button"
+      onClick={() => setEditing(true)}
+      className="flex items-center gap-2 w-full px-1 py-1 rounded hover:bg-ink-100 transition text-left"
     >
-      {options.map((o) => (
-        <option key={o.value} value={o.value}>
-          {o.label}
-        </option>
-      ))}
-    </select>
+      {value ? (
+        <span className="size-6 rounded-full bg-brand-600 text-white grid place-items-center text-[10px] font-semibold shrink-0">
+          {initial}
+        </span>
+      ) : (
+        <span className="size-6 rounded-full border border-dashed border-ink-300 grid place-items-center text-ink-400 text-[10px] shrink-0">
+          ?
+        </span>
+      )}
+      <span
+        className={
+          value ? "text-base text-ink-800 truncate" : "text-base text-ink-400 italic"
+        }
+      >
+        {value || "Add owner"}
+      </span>
+    </button>
+  );
+}
+
+// ── KeywordCell ────────────────────────────────────────────────────────
+// Subtle code-style background to set keywords apart from regular text.
+function KeywordCell({
+  value,
+  onChange
+}: {
+  value: string;
+  onChange: (next: string) => void;
+}) {
+  const [draft, setDraft] = useState(value);
+  const active = document.activeElement?.tagName;
+  if (draft !== value && active !== "INPUT") setDraft(value);
+  return (
+    <input
+      type="text"
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={() => {
+        if (draft !== value) onChange(draft);
+      }}
+      placeholder="add keyword"
+      className={
+        "block w-full bg-ink-50 border border-transparent rounded px-2 py-1.5 text-xs font-mono text-ink-800 placeholder:text-ink-400 placeholder:not-italic focus:outline-none focus:border-brand-400 focus:bg-white transition"
+      }
+    />
+  );
+}
+
+// ── UrlCell ────────────────────────────────────────────────────────────
+// Globe icon + URL input + external-link icon when a URL is present.
+function UrlCell({
+  value,
+  onChange
+}: {
+  value: string;
+  onChange: (next: string) => void;
+}) {
+  const [draft, setDraft] = useState(value);
+  const active = document.activeElement?.tagName;
+  if (draft !== value && active !== "INPUT") setDraft(value);
+  return (
+    <div className="flex items-center gap-2 group/url min-w-0">
+      <Globe
+        className={
+          "size-4 shrink-0 " +
+          (value ? "text-brand-600" : "text-ink-300")
+        }
+      />
+      <input
+        type="text"
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={() => {
+          if (draft !== value) onChange(draft);
+        }}
+        placeholder="https://"
+        className="block flex-1 min-w-0 bg-transparent border border-transparent rounded px-1.5 py-1.5 text-xs font-mono text-brand-700 placeholder:text-ink-400 placeholder:font-sans placeholder:not-italic focus:outline-none focus:border-brand-400 focus:bg-white transition"
+      />
+      {value ? (
+        <a
+          href={value}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="p-1 text-ink-300 hover:text-brand-700 rounded shrink-0 opacity-0 group-hover/url:opacity-100 transition"
+          aria-label="Open URL in new tab"
+        >
+          <ExternalLink className="size-4" />
+        </a>
+      ) : null}
+    </div>
   );
 }
 
@@ -733,34 +962,6 @@ function TagsCell({
         placeholder={tags.length === 0 ? "+ Add tag" : "+"}
         className="bg-transparent text-xs text-ink-700 placeholder:text-ink-400 focus:outline-none min-w-[60px] flex-1 py-1"
       />
-    </div>
-  );
-}
-
-function StatusCell({
-  value,
-  onChange
-}: {
-  value: LivePageStatus;
-  onChange: (next: LivePageStatus) => void;
-}) {
-  return (
-    <div className="flex items-center gap-2">
-      <Badge tone={STATUS_TONE[value]}>
-        {STATUSES.find((s) => s.value === value)?.label || value}
-      </Badge>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value as LivePageStatus)}
-        className={`${CELL_INPUT_CLASS} !w-auto`}
-        aria-label="Change status"
-      >
-        {STATUSES.map((s) => (
-          <option key={s.value} value={s.value}>
-            {s.label}
-          </option>
-        ))}
-      </select>
     </div>
   );
 }

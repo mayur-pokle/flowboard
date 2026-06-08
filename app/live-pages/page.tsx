@@ -234,31 +234,31 @@ export default function LivePagesPage() {
         <Badge tone="neutral">{filtered.length} rows</Badge>
       </div>
 
-      {/* Table */}
+      {/* Table — both axes scroll; sticky header + sticky Title column */}
       <div className="flex-1 min-h-0 overflow-auto scrollbar-thin">
         {filtered.length === 0 ? (
           <EmptyState onAdd={handleAdd} />
         ) : (
-          <table className="min-w-[1800px] w-full text-base border-separate border-spacing-0">
-            <thead className="sticky top-0 bg-ink-50 z-10 shadow-[0_1px_0_0_rgba(0,0,0,0.06)]">
+          <table className="min-w-[2000px] w-full text-base border-separate border-spacing-0">
+            <thead className="sticky top-0 z-20">
               <tr>
-                <Th className="w-[260px]">Title</Th>
-                <Th className="w-[240px]">URL</Th>
-                <Th className="w-[180px]">Target keyword</Th>
-                <Th className="w-[140px]">Type</Th>
-                <Th className="w-[140px]">Intent</Th>
-                <Th className="w-[140px]">Status</Th>
+                <Th sticky className="w-[280px]">Title</Th>
+                <Th className="w-[260px]">URL</Th>
+                <Th className="w-[200px]">Target keyword</Th>
+                <Th className="w-[160px]">Type</Th>
+                <Th className="w-[160px]">Intent</Th>
+                <Th className="w-[180px]">Status</Th>
                 <Th className="w-[140px]">Publish date</Th>
                 <Th className="w-[140px]">Reviewed</Th>
-                <Th className="w-[140px]">Owner</Th>
-                <Th className="w-[200px]">Tags</Th>
+                <Th className="w-[160px]">Owner</Th>
+                <Th className="w-[220px]">Tags</Th>
                 <Th className="w-[120px] text-right">Volume / mo</Th>
                 <Th className="w-[80px] text-right">KD</Th>
                 <Th className="w-[120px] text-right">Traffic / mo</Th>
-                <Th className="w-[120px] text-right">Rank</Th>
+                <Th className="w-[100px] text-right">Rank</Th>
                 <Th className="w-[120px] text-right">Backlinks</Th>
                 <Th className="w-[120px] text-right">Conversions</Th>
-                <Th className="w-[200px]">Notes</Th>
+                <Th className="w-[240px]">Notes</Th>
                 <Th className="w-[60px]"></Th>
               </tr>
             </thead>
@@ -323,15 +323,24 @@ export default function LivePagesPage() {
 
 function Th({
   children,
-  className = ""
+  className = "",
+  sticky = false
 }: {
   children?: React.ReactNode;
   className?: string;
+  // First column gets sticky-left styling so the Title stays visible
+  // while horizontally scrolling through the metrics columns.
+  sticky?: boolean;
 }) {
+  const stickyClass = sticky
+    ? "sticky left-0 z-30 border-r-2 border-ink-200"
+    : "border-r border-ink-200";
   return (
     <th
       className={
-        "text-left text-[11px] font-semibold uppercase tracking-wider text-ink-500 px-3 py-2 border-b border-ink-200 " +
+        "text-left text-xs font-semibold uppercase tracking-wider text-ink-600 px-3 py-3 bg-brand-50/60 border-b-2 border-ink-200 " +
+        stickyClass +
+        " " +
         className
       }
     >
@@ -342,15 +351,31 @@ function Th({
 
 function Td({
   children,
-  className = ""
+  className = "",
+  sticky = false,
+  hovered = false
 }: {
   children: React.ReactNode;
   className?: string;
+  // Matches Th sticky — keeps the Title cell pinned during horizontal scroll.
+  sticky?: boolean;
+  // Hover state passed from the row so the sticky cell's bg matches.
+  hovered?: boolean;
 }) {
+  // Sticky cells need an explicit background so they don't show the
+  // scrolling row content underneath. We swap between white and the hover
+  // tint to match the row.
+  const stickyBg = hovered ? "bg-ink-50" : "bg-white";
+  const stickyClass = sticky
+    ? `sticky left-0 z-10 border-r-2 border-ink-200 ${stickyBg}`
+    : "border-r border-ink-200";
   return (
     <td
       className={
-        "px-3 py-2 border-b border-ink-100 align-middle " + className
+        "px-3 py-3 border-b border-ink-200 align-top " +
+        stickyClass +
+        " " +
+        className
       }
     >
       {children}
@@ -367,14 +392,20 @@ function Row({
   onUpdate: (patch: Partial<LivePage>) => void;
   onRemove: () => void;
 }) {
+  const [hovered, setHovered] = useState(false);
   return (
-    <tr className="hover:bg-ink-50/60 group">
-      <Td>
+    <tr
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      className={hovered ? "bg-ink-50 group" : "bg-white group"}
+    >
+      <Td sticky hovered={hovered}>
         <CellInput
           value={page.title}
           onChange={(v) => onUpdate({ title: v })}
           placeholder="Untitled page"
           className="font-medium"
+          multiline
         />
       </Td>
       <Td>
@@ -514,6 +545,7 @@ function Row({
           value={page.notes}
           onChange={(v) => onUpdate({ notes: v })}
           placeholder="—"
+          multiline
         />
       </Td>
       <Td>
@@ -538,17 +570,43 @@ function CellInput({
   value,
   onChange,
   placeholder,
-  className = ""
+  className = "",
+  multiline = false
 }: {
   value: string;
   onChange: (next: string) => void;
   placeholder?: string;
   className?: string;
+  // When true, render as auto-growing textarea so long content wraps
+  // naturally and the row height grows to fit. Used for Title + Notes.
+  multiline?: boolean;
 }) {
   const [draft, setDraft] = useState(value);
   // Keep draft in sync if parent value changes externally.
-  if (draft !== value && document.activeElement?.tagName !== "INPUT") {
+  const active = document.activeElement?.tagName;
+  if (draft !== value && active !== "INPUT" && active !== "TEXTAREA") {
     setDraft(value);
+  }
+  if (multiline) {
+    return (
+      <textarea
+        value={draft}
+        placeholder={placeholder}
+        onChange={(e) => {
+          setDraft(e.target.value);
+          // Auto-grow the textarea to fit its content.
+          const ta = e.target as HTMLTextAreaElement;
+          ta.style.height = "auto";
+          ta.style.height = ta.scrollHeight + "px";
+        }}
+        onBlur={() => {
+          if (draft !== value) onChange(draft);
+        }}
+        rows={1}
+        className={`${CELL_INPUT_CLASS} ${className} resize-none overflow-hidden leading-relaxed`}
+        style={{ minHeight: "2rem" }}
+      />
+    );
   }
   return (
     <input

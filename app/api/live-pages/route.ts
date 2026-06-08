@@ -4,12 +4,8 @@ import { db } from "@/db";
 import { livePages } from "@/db/schema";
 import { withAuth, badRequest, serverError } from "@/lib/api";
 import { uid } from "@/lib/utils";
-import type {
-  ContentType,
-  LivePage,
-  LivePageStatus,
-  Topic
-} from "@/lib/types";
+import { rowToLivePage } from "@/lib/db-mappers";
+import type { ContentType, LivePageStatus } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,43 +25,6 @@ const TYPES: ContentType[] = [
   "Checklist",
   "Framework"
 ];
-
-export function rowToLivePage(
-  r: typeof livePages.$inferSelect
-): LivePage {
-  return {
-    id: r.id,
-    taskId: r.taskId ?? undefined,
-    topicSnapshot: (r.topicSnapshot ?? undefined) as Topic | undefined,
-    title: r.title,
-    url: r.url,
-    metaTitle: r.metaTitle,
-    metaDescription: r.metaDescription,
-    targetKeyword: r.targetKeyword,
-    searchIntent: r.searchIntent,
-    contentType: (TYPES.includes(r.contentType as ContentType)
-      ? r.contentType
-      : "Guide") as ContentType,
-    status: (STATUSES.includes(r.status as LivePageStatus)
-      ? r.status
-      : "scheduled") as LivePageStatus,
-    publishDate: r.publishDate ? r.publishDate.toISOString() : undefined,
-    lastReviewedDate: r.lastReviewedDate
-      ? r.lastReviewedDate.toISOString()
-      : undefined,
-    owner: r.owner,
-    monthlyTraffic: r.monthlyTraffic ?? undefined,
-    rankingPosition: r.rankingPosition ?? undefined,
-    searchVolume: r.searchVolume ?? undefined,
-    keywordDifficulty: r.keywordDifficulty ?? undefined,
-    backlinks: r.backlinks ?? undefined,
-    conversions: r.conversions ?? undefined,
-    notes: r.notes,
-    tags: (r.tags ?? []) as string[],
-    createdAt: r.createdAt.toISOString(),
-    updatedAt: r.updatedAt.toISOString()
-  };
-}
 
 export const GET = withAuth(async () => {
   try {

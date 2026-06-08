@@ -40,7 +40,12 @@ export async function POST(req: Request) {
 
   const text =
     body.text ||
-    buildSlackMessage(body.topics || [], body.appUrl || "https://flowboard.app");
+    buildSlackMessage(
+      body.topics || [],
+      body.appUrl ||
+        process.env.NEXT_PUBLIC_APP_URL ||
+        "https://flowboard-two-amber.vercel.app/board"
+    );
 
   try {
     await postToSlack(webhook, text);

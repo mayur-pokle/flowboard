@@ -105,9 +105,11 @@ export async function GET(req: Request) {
 
     const webhook = process.env.SLACK_WEBHOOK_URL;
     if (webhook) {
+      // Production URL. NEXT_PUBLIC_APP_URL overrides for previews / dev.
       const appUrl =
-        process.env.NEXT_PUBLIC_APP_URL || `https://${url.host}`;
-      await postToSlack(webhook, buildSlackMessage(topics, `${appUrl}/ideas`));
+        process.env.NEXT_PUBLIC_APP_URL ||
+        "https://flowboard-two-amber.vercel.app";
+      await postToSlack(webhook, buildSlackMessage(topics, `${appUrl}/board`));
     }
 
     return NextResponse.json({

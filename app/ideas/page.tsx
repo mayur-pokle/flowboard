@@ -233,7 +233,7 @@ export default function IdeasPage() {
           topics: filtered,
           appUrl:
             typeof window !== "undefined"
-              ? `${window.location.origin}/ideas`
+              ? `${window.location.origin}/board`
               : ""
         })
       });

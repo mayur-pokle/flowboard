@@ -217,6 +217,60 @@ export const existingContent = pgTable("existingContent", {
   createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull()
 });
 
+// ───────────────────────── Live pages ─────────────────────────
+// Once a task ships, it becomes a Live Page — a row tracked for SEO
+// performance after publish. Seeded automatically when a task hits
+// status="done", but the row is fully editable from then on.
+
+export const livePages = pgTable("livePages", {
+  id: text("id").primaryKey(),
+  // Source task — nullable so a user can also add ad-hoc pages.
+  // No FK reference so deleting a task doesn't cascade.
+  taskId: text("taskId"),
+  // Snapshot of the source topic for context, in case the task is purged.
+  topicSnapshot: jsonb("topicSnapshot"),
+
+  // Core
+  title: text("title").default("").notNull(),
+  url: text("url").default("").notNull(),
+  metaTitle: text("metaTitle").default("").notNull(),
+  metaDescription: text("metaDescription").default("").notNull(),
+  targetKeyword: text("targetKeyword").default("").notNull(),
+  // Free-text or one of: informational / commercial / transactional / navigational
+  searchIntent: text("searchIntent").default("").notNull(),
+  // Calculator / Template / Guide / Whitepaper / Checklist / Framework
+  contentType: text("contentType").default("Guide").notNull(),
+
+  // Lifecycle — drives the colored status pill in the table
+  // scheduled | published | updating | needs_refresh | retired
+  status: text("status").default("scheduled").notNull(),
+  publishDate: timestamp("publishDate", { mode: "date" }),
+  lastReviewedDate: timestamp("lastReviewedDate", { mode: "date" }),
+  owner: text("owner").default("").notNull(),
+
+  // Performance (manual today; could integrate Search Console later).
+  monthlyTraffic: integer("monthlyTraffic"),
+  rankingPosition: integer("rankingPosition"),
+  // Estimated monthly search volume for targetKeyword — from Ahrefs /
+  // SEMrush / Google Keyword Planner. Paired with rankingPosition this is
+  // the strongest signal of opportunity ceiling for this page.
+  searchVolume: integer("searchVolume"),
+  // Keyword difficulty 0-100 (Ahrefs KD, SEMrush KD%, etc.). Higher means
+  // harder to rank for. Pair with searchVolume + rankingPosition for the
+  // full "is this worth pursuing" picture.
+  keywordDifficulty: integer("keywordDifficulty"),
+  backlinks: integer("backlinks"),
+  conversions: integer("conversions"),
+
+  // Misc
+  notes: text("notes").default("").notNull(),
+  tags: text("tags").array().default([]).notNull(),
+
+  createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt", { mode: "date" }).defaultNow().notNull(),
+  createdByUserId: text("createdByUserId")
+});
+
 // ───────────────────────── Task comments ─────────────────────────
 // Per-task discussion thread. Used by the content team to leave remarks,
 // review notes, blockers, etc. Comments are workspace-shared (no DMs).
@@ -246,3 +300,4 @@ export type DbCompetitor = typeof competitors.$inferSelect;
 export type DbKeyword = typeof keywords.$inferSelect;
 export type DbExistingContent = typeof existingContent.$inferSelect;
 export type DbTaskComment = typeof taskComments.$inferSelect;
+export type DbLivePage = typeof livePages.$inferSelect;

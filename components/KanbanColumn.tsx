@@ -31,8 +31,12 @@ export function KanbanColumn({
   const { isOver, setNodeRef } = useDroppable({ id: status });
 
   return (
-    <div className="flex flex-col w-[380px] shrink-0">
-      <div className="flex items-center gap-2 px-2 mb-2">
+    // h-full + min-h-0 keep the column's height bounded by the parent flex row
+    // so cards inside scroll instead of stretching the column past the viewport
+    // (which used to leave the dashed border short of the To Do column when
+    // one column had many cards and the others were empty).
+    <div className="flex flex-col w-[380px] shrink-0 h-full min-h-0">
+      <div className="flex items-center gap-2 px-2 mb-2 shrink-0">
         <span className={cn("size-2 rounded-full", COLUMN_DOT[status])} />
         <h2 className="text-base font-semibold text-ink-800">{title}</h2>
         <span className="text-xs text-ink-500 tabular-nums">
@@ -42,7 +46,9 @@ export function KanbanColumn({
       <div
         ref={setNodeRef}
         className={cn(
-          "flex flex-col gap-2 rounded-lg border-2 border-dashed p-2 min-h-[180px] flex-1 transition",
+          // flex-1 + min-h-0 = take remaining height, allow shrink
+          // overflow-y-auto = scroll cards inside the column when overflowing
+          "flex flex-col gap-2 rounded-lg border-2 border-dashed p-2 flex-1 min-h-0 overflow-y-auto scrollbar-thin transition",
           COLUMN_COLORS[status],
           isOver && "border-brand-400 bg-brand-50"
         )}

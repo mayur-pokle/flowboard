@@ -103,47 +103,6 @@ export interface Keyword {
   updatedAt: string;
 }
 
-// ── Live Pages ──
-// Lifecycle states for a published / about-to-publish page.
-export type LivePageStatus =
-  | "scheduled"
-  | "published"
-  | "updating"
-  | "needs_refresh"
-  | "retired";
-
-export interface LivePage {
-  id: string;
-  taskId?: string;
-  topicSnapshot?: Topic;
-
-  title: string;
-  url: string;
-  metaTitle: string;
-  metaDescription: string;
-  targetKeyword: string;
-  searchIntent: string; // free-text, may match SearchIntentType
-  contentType: ContentType;
-
-  status: LivePageStatus;
-  publishDate?: string;
-  lastReviewedDate?: string;
-  owner: string;
-
-  monthlyTraffic?: number;
-  rankingPosition?: number;
-  searchVolume?: number;
-  keywordDifficulty?: number;
-  backlinks?: number;
-  conversions?: number;
-
-  notes: string;
-  tags: string[];
-
-  createdAt: string;
-  updatedAt: string;
-}
-
 // ── Task comments ──
 export interface TaskComment {
   id: string;
@@ -215,8 +174,6 @@ export interface AppState {
   // ── New priority-targeting & cannibalization data ──
   keywords: Keyword[];
   existingContent: ExistingContent[];
-  // ── Live Pages: post-publish SEO tracking ──
-  livePages: LivePage[];
   settings: Settings;
   selectedTaskId: string | null;
   lastGeneratedAt: string | null;

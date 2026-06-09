@@ -7,7 +7,6 @@ import type {
   ExistingContent,
   GeneratedContent,
   Keyword,
-  LivePage,
   Settings,
   Status,
   Task,
@@ -102,19 +101,6 @@ interface Store extends AppState {
   }>;
   bulkDeleteExistingContent: (ids: string[]) => Promise<void>;
 
-  // ── Live Pages ──
-  addLivePage: (
-    p: Partial<Omit<LivePage, "id" | "createdAt" | "updatedAt">> & {
-      title: string;
-    }
-  ) => Promise<void>;
-  updateLivePage: (
-    id: string,
-    patch: Partial<Omit<LivePage, "id" | "createdAt" | "updatedAt">>
-  ) => Promise<void>;
-  removeLivePage: (id: string) => Promise<void>;
-  reloadLivePages: () => Promise<void>;
-
   // Task comments — loaded on demand per task.
   commentsByTaskId: Record<string, TaskComment[]>;
   loadTaskComments: (taskId: string) => Promise<void>;
@@ -172,7 +158,6 @@ const initialState: AppState = {
   tasks: [],
   keywords: [],
   existingContent: [],
-  livePages: [],
   settings: defaultSettings,
   selectedTaskId: null,
   lastGeneratedAt: null
@@ -290,7 +275,7 @@ export const useStore = create<Store>()((set, get) => ({
 
   hydrate: async () => {
     try {
-      const [topicsRes, tasksRes, settingsRes, kwRes, ecRes, lpRes] =
+      const [topicsRes, tasksRes, settingsRes, kwRes, ecRes] =
         await Promise.all([
           api<{
             topics: Topic[];
@@ -309,8 +294,7 @@ export const useStore = create<Store>()((set, get) => ({
           api<{ keywords: Keyword[] }>("/api/keywords"),
           api<{ existingContent: ExistingContent[] }>(
             "/api/existing-content"
-          ),
-          api<{ livePages: LivePage[] }>("/api/live-pages")
+          )
         ]);
       const s = settingsRes.settings;
       set({
@@ -320,7 +304,6 @@ export const useStore = create<Store>()((set, get) => ({
         tasks: tasksRes.tasks,
         keywords: kwRes.keywords || [],
         existingContent: ecRes.existingContent || [],
-        livePages: lpRes.livePages || [],
         settings: {
           ...defaultSettings,
           companyName: s.companyName,
@@ -438,8 +421,6 @@ export const useStore = create<Store>()((set, get) => ({
   // ───────── Tasks ─────────
   setTaskStatus: async (id, status) => {
     const prev = get().tasks;
-    const wasNotDone =
-      prev.find((t) => t.id === id)?.status !== "done";
     set({
       tasks: prev.map((t) =>
         t.id === id
@@ -452,11 +433,6 @@ export const useStore = create<Store>()((set, get) => ({
         method: "PATCH",
         json: { status }
       });
-      // Server auto-seeds a Live Page when a task hits "done" for the
-      // first time. Refresh livePages so the user sees it immediately.
-      if (status === "done" && wasNotDone) {
-        void get().reloadLivePages();
-      }
     } catch (err) {
       set({ tasks: prev });
       throw err;
@@ -843,61 +819,6 @@ export const useStore = create<Store>()((set, get) => ({
       });
     } catch (err) {
       set({ existingContent: prev });
-      throw err;
-    }
-  },
-
-  // ───────── Live Pages ─────────
-  // We also refetch the list after a task transitions to "done" since the
-  // server auto-creates a row in that case. Components can call
-  // reloadLivePages() to pick that up.
-  reloadLivePages: async () => {
-    try {
-      const { livePages: rows } = await api<{ livePages: LivePage[] }>(
-        "/api/live-pages"
-      );
-      set({ livePages: rows });
-    } catch (err) {
-      console.error("[store] reloadLivePages failed:", err);
-    }
-  },
-
-  addLivePage: async (p) => {
-    try {
-      await api("/api/live-pages", { method: "POST", json: p });
-      const { livePages: rows } = await api<{ livePages: LivePage[] }>(
-        "/api/live-pages"
-      );
-      set({ livePages: rows });
-    } catch (err) {
-      throw err;
-    }
-  },
-
-  updateLivePage: async (id, patch) => {
-    const prev = get().livePages;
-    set({
-      livePages: prev.map((p) =>
-        p.id === id
-          ? { ...p, ...patch, updatedAt: new Date().toISOString() }
-          : p
-      )
-    });
-    try {
-      await api(`/api/live-pages/${id}`, { method: "PATCH", json: patch });
-    } catch (err) {
-      set({ livePages: prev });
-      throw err;
-    }
-  },
-
-  removeLivePage: async (id) => {
-    const prev = get().livePages;
-    set({ livePages: prev.filter((p) => p.id !== id) });
-    try {
-      await api(`/api/live-pages/${id}`, { method: "DELETE" });
-    } catch (err) {
-      set({ livePages: prev });
       throw err;
     }
   },

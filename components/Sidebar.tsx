@@ -3,20 +3,13 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
-import {
-  Lightbulb,
-  KanbanSquare,
-  Settings,
-  LogOut,
-  Globe
-} from "lucide-react";
+import { Lightbulb, KanbanSquare, Settings, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useStore, useHasHydrated } from "@/lib/store";
 
 const items = [
   { href: "/ideas", label: "Ideas", icon: Lightbulb },
   { href: "/board", label: "Kanban", icon: KanbanSquare },
-  { href: "/live-pages", label: "Live Pages", icon: Globe },
   { href: "/settings/api", label: "Settings", icon: Settings }
 ];
 
@@ -26,7 +19,6 @@ export function Sidebar() {
   const { data: session } = useSession();
   const topicCount = useStore((s) => s.topics.length);
   const taskCount = useStore((s) => s.tasks.length);
-  const livePageCount = useStore((s) => s.livePages.length);
 
   const email = session?.user?.email || "";
 
@@ -60,8 +52,6 @@ export function Sidebar() {
               ? topicCount
               : hydrated && item.href === "/board"
               ? taskCount
-              : hydrated && item.href === "/live-pages"
-              ? livePageCount
               : null;
           return (
             <Link

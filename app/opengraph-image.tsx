@@ -1,8 +1,8 @@
 import { ImageResponse } from "next/og";
 
 // Next.js convention: this file is auto-served at /opengraph-image and
-// included as the og:image / twitter:image. Edge runtime for fast cold
-// starts; rendered on-demand with the satori engine inside ImageResponse.
+// included as og:image / twitter:image meta. Rendered with satori on
+// the Edge runtime.
 
 export const runtime = "edge";
 export const alt =
@@ -10,18 +10,76 @@ export const alt =
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
-// ──────────────────────────────────────────────────────────────────────
-// Design notes:
-// - Background uses a soft lavender → blue gradient matching the brand.
-// - Left half = brand mark + headline.
-// - Right half = a stylized Flowboard kanban preview so a viewer can
-//   instantly tell what the product looks like.
-// - Satori (the rendering engine inside next/og) only supports a CSS
-//   subset. Notably: every container with multiple children must set
-//   `display: flex`, `aspectRatio` is unsupported, fonts are limited to
-//   what's loaded. We rely on Satori's default font here to avoid having
-//   to fetch and pass a webfont binary at runtime.
-// ──────────────────────────────────────────────────────────────────────
+// ── Brand palette (matches the V2 logo SVG) ───────────────────────────
+const BAR_DARK = "#4A4DC9"; // first bar, also dashed border stroke
+const BAR_MID = "#9596E3"; // third bar
+const BAR_LIGHT = "#D5D6FF"; // second bar
+const TEXT_DARK = "#162324"; // logo wordmark + headline body
+const HEADLINE = "#1B1F3B"; // marketing headline tone
+const CARD_BG_VIOLET = "#F2EFFF";
+const CARD_TX_VIOLET = "#5B3CD9";
+const CARD_BG_TEAL = "#E5F5F0";
+const CARD_TX_TEAL = "#15795A";
+const CARD_BG_AMBER = "#FEF4E3";
+const CARD_TX_AMBER = "#A65A00";
+const CARD_BG_SKY = "#E5EEFC";
+const CARD_TX_SKY = "#1F4FBA";
+const CARD_BG_INDIGO = "#EAE9FB";
+const CARD_TX_INDIGO = "#3F2BB3";
+
+// Replicates the V2 dashed border by stacking four dashed lines on a
+// rounded rect. Satori doesn't render `stroke-dasharray` from inline
+// SVG perfectly, so we use CSS `border: dashed` instead.
+function LogoMark({ size: s = 60 }: { size?: number }) {
+  const barWidth = s * (11 / 65);
+  const barGap = s * (4 / 65);
+  const insetTop = s * (6.875 / 65);
+  const insetSide = s * (6.875 / 65);
+  const barH1 = s * (41.25 / 65);
+  const barH2 = s * (20.625 / 65);
+  const barH3 = s * (31.625 / 65);
+  return (
+    <div
+      style={{
+        width: s,
+        height: s,
+        borderRadius: s * 0.09,
+        border: `2px dashed ${BAR_DARK}`,
+        background: "#FAFCFC",
+        display: "flex",
+        alignItems: "flex-start",
+        padding: insetTop,
+        gap: barGap,
+        boxSizing: "border-box"
+      }}
+    >
+      <div
+        style={{
+          width: barWidth,
+          height: barH1,
+          background: BAR_DARK,
+          borderRadius: 2
+        }}
+      />
+      <div
+        style={{
+          width: barWidth,
+          height: barH2,
+          background: BAR_LIGHT,
+          borderRadius: 2
+        }}
+      />
+      <div
+        style={{
+          width: barWidth,
+          height: barH3,
+          background: BAR_MID,
+          borderRadius: 2
+        }}
+      />
+    </div>
+  );
+}
 
 export default async function OpengraphImage() {
   return new ImageResponse(
@@ -31,35 +89,37 @@ export default async function OpengraphImage() {
           width: "100%",
           height: "100%",
           display: "flex",
+          // Light lavender → blue gradient matching the marketing visual
           background:
-            "linear-gradient(135deg, #EAEDFC 0%, #C9D4F5 50%, #AAB7EE 100%)",
-          position: "relative"
+            "linear-gradient(135deg, #EFF1FB 0%, #D6DCF6 45%, #B8C2EE 100%)",
+          position: "relative",
+          fontFamily: "system-ui, sans-serif"
         }}
       >
-        {/* ── Subtle top-right decorative curves ── */}
+        {/* Subtle decorative curves in the top-right corner */}
         <svg
-          width="500"
-          height="280"
-          viewBox="0 0 500 280"
+          width="540"
+          height="320"
+          viewBox="0 0 540 320"
           xmlns="http://www.w3.org/2000/svg"
           style={{ position: "absolute", top: 0, right: 0 }}
         >
           <path
-            d="M 100 0 Q 350 100 500 50"
+            d="M 80 0 Q 320 80 540 30"
             stroke="#FFFFFF"
             strokeWidth="2"
-            strokeOpacity="0.55"
+            strokeOpacity="0.6"
             fill="none"
           />
           <path
-            d="M 0 30 Q 250 180 500 140"
+            d="M 0 30 Q 270 200 540 150"
             stroke="#FFFFFF"
             strokeWidth="2"
             strokeOpacity="0.4"
             fill="none"
           />
           <path
-            d="M 150 0 Q 380 220 500 230"
+            d="M 160 0 Q 380 240 540 260"
             stroke="#FFFFFF"
             strokeWidth="2"
             strokeOpacity="0.28"
@@ -70,66 +130,28 @@ export default async function OpengraphImage() {
         {/* ── Left: brand mark + headline ── */}
         <div
           style={{
-            width: "48%",
+            width: "46%",
             display: "flex",
             flexDirection: "column",
             justifyContent: "center",
-            padding: "0 64px"
+            padding: "0 60px"
           }}
         >
-          {/* Logo */}
+          {/* Logo (V2 style) */}
           <div
             style={{
               display: "flex",
               alignItems: "center",
-              gap: 16,
-              marginBottom: 56
+              gap: 18,
+              marginBottom: 52
             }}
           >
-            <div
-              style={{
-                width: 60,
-                height: 60,
-                border: "3px solid #3B3B3B",
-                borderRadius: 8,
-                display: "flex",
-                alignItems: "flex-end",
-                padding: 6,
-                gap: 4
-              }}
-            >
-              <div
-                style={{
-                  width: 11,
-                  height: 41,
-                  background: "#2464CA",
-                  borderRadius: 2
-                }}
-              />
-              <div
-                style={{
-                  width: 11,
-                  height: 21,
-                  background: "#2464CA",
-                  opacity: 0.35,
-                  borderRadius: 2
-                }}
-              />
-              <div
-                style={{
-                  width: 11,
-                  height: 32,
-                  background: "#2464CA",
-                  opacity: 0.65,
-                  borderRadius: 2
-                }}
-              />
-            </div>
+            <LogoMark size={64} />
             <span
               style={{
-                fontSize: 44,
+                fontSize: 48,
                 fontWeight: 700,
-                color: "#3B3B3B",
+                color: TEXT_DARK,
                 letterSpacing: "-0.01em"
               }}
             >
@@ -144,9 +166,9 @@ export default async function OpengraphImage() {
               flexDirection: "column",
               fontSize: 64,
               fontWeight: 700,
-              color: "#1E2540",
+              color: HEADLINE,
               lineHeight: 1.05,
-              letterSpacing: "-0.02em"
+              letterSpacing: "-0.025em"
             }}
           >
             <span>Spot content</span>
@@ -155,13 +177,13 @@ export default async function OpengraphImage() {
           </div>
         </div>
 
-        {/* ── Right: kanban preview ── */}
+        {/* ── Right: product preview ── */}
         <div
           style={{
-            width: "52%",
+            width: "54%",
             display: "flex",
             alignItems: "center",
-            padding: "70px 56px 70px 0"
+            padding: "60px 50px 60px 0"
           }}
         >
           <div
@@ -169,8 +191,8 @@ export default async function OpengraphImage() {
               width: "100%",
               height: "100%",
               background: "white",
-              borderRadius: 16,
-              boxShadow: "0 30px 80px rgba(30, 37, 64, 0.18)",
+              borderRadius: 18,
+              boxShadow: "0 30px 80px rgba(27, 31, 59, 0.18)",
               display: "flex",
               overflow: "hidden"
             }}
@@ -178,7 +200,7 @@ export default async function OpengraphImage() {
             {/* Mini sidebar */}
             <div
               style={{
-                width: 140,
+                width: 150,
                 background: "#FAFBFE",
                 borderRight: "1px solid #ECEFF6",
                 padding: "20px 14px",
@@ -186,61 +208,25 @@ export default async function OpengraphImage() {
                 flexDirection: "column"
               }}
             >
-              {/* Mini logo */}
               <div
                 style={{
                   display: "flex",
                   alignItems: "center",
-                  gap: 6,
+                  gap: 8,
                   marginBottom: 24
                 }}
               >
-                <div
-                  style={{
-                    width: 18,
-                    height: 18,
-                    border: "1.5px solid #3B3B3B",
-                    borderRadius: 3,
-                    display: "flex",
-                    alignItems: "flex-end",
-                    padding: 2,
-                    gap: 1
-                  }}
-                >
-                  <div
-                    style={{
-                      width: 3,
-                      height: 12,
-                      background: "#2464CA",
-                      borderRadius: 1
-                    }}
-                  />
-                  <div
-                    style={{
-                      width: 3,
-                      height: 6,
-                      background: "#2464CA",
-                      opacity: 0.35,
-                      borderRadius: 1
-                    }}
-                  />
-                  <div
-                    style={{
-                      width: 3,
-                      height: 9,
-                      background: "#2464CA",
-                      opacity: 0.65,
-                      borderRadius: 1
-                    }}
-                  />
-                </div>
+                <LogoMark size={22} />
                 <span
-                  style={{ fontSize: 13, fontWeight: 700, color: "#3B3B3B" }}
+                  style={{
+                    fontSize: 14,
+                    fontWeight: 700,
+                    color: TEXT_DARK
+                  }}
                 >
                   FlowBoard
                 </span>
               </div>
-
               <NavItem icon="💡" label="Ideas" count="23" />
               <NavItem icon="▦" label="Kanban" count="12" active />
               <NavItem icon="⚙" label="Settings" />
@@ -260,14 +246,14 @@ export default async function OpengraphImage() {
                 style={{
                   display: "flex",
                   flexDirection: "column",
-                  marginBottom: 18
+                  marginBottom: 16
                 }}
               >
                 <span
                   style={{
                     fontSize: 16,
                     fontWeight: 700,
-                    color: "#1E2540"
+                    color: HEADLINE
                   }}
                 >
                   Execution Board
@@ -284,13 +270,7 @@ export default async function OpengraphImage() {
               </div>
 
               {/* Two columns */}
-              <div
-                style={{
-                  display: "flex",
-                  gap: 14,
-                  flex: 1
-                }}
-              >
+              <div style={{ display: "flex", gap: 12, flex: 1 }}>
                 <Column
                   label="To Do"
                   count={7}
@@ -298,17 +278,26 @@ export default async function OpengraphImage() {
                   cards={[
                     {
                       type: "Framework",
-                      tone: { bg: "#F2EFFF", text: "#6432C2" },
+                      tone: {
+                        bg: CARD_BG_INDIGO,
+                        text: CARD_TX_INDIGO
+                      },
                       title: "Standard SaaS Chart of Accounts Framework"
                     },
                     {
                       type: "Framework",
-                      tone: { bg: "#F2EFFF", text: "#6432C2" },
+                      tone: {
+                        bg: CARD_BG_INDIGO,
+                        text: CARD_TX_INDIGO
+                      },
                       title: "Series A Due Diligence Financial Framework"
                     },
                     {
                       type: "Calculator",
-                      tone: { bg: "#F1ECFE", text: "#6432C2" },
+                      tone: {
+                        bg: CARD_BG_VIOLET,
+                        text: CARD_TX_VIOLET
+                      },
                       title: "Startup Cash Runway and Burn Rate"
                     }
                   ]}
@@ -316,17 +305,20 @@ export default async function OpengraphImage() {
                 <Column
                   label="In Progress"
                   count={2}
-                  dotColor="#2464CA"
+                  dotColor={BAR_DARK}
                   cards={[
                     {
                       type: "Checklist",
-                      tone: { bg: "#E5F5F0", text: "#15795A" },
+                      tone: { bg: CARD_BG_TEAL, text: CARD_TX_TEAL },
                       title: "48-Hour Month-End Close Checklist for Startups"
                     },
                     {
                       type: "Calculator",
-                      tone: { bg: "#F1ECFE", text: "#6432C2" },
-                      title: "The Hidden Cost of Manual Accounting"
+                      tone: {
+                        bg: CARD_BG_VIOLET,
+                        text: CARD_TX_VIOLET
+                      },
+                      title: "The Hidden Cost of Manual Accounting Calculator"
                     }
                   ]}
                 />
@@ -340,7 +332,13 @@ export default async function OpengraphImage() {
   );
 }
 
-// ── Sub-components ────────────────────────────────────────────────────
+// Suppress unused-var warnings for palette constants kept for future use.
+void CARD_BG_AMBER;
+void CARD_TX_AMBER;
+void CARD_BG_SKY;
+void CARD_TX_SKY;
+
+// ── Sub-components ─────────────────────────────────────────────────────
 
 function NavItem({
   icon,
@@ -361,8 +359,8 @@ function NavItem({
         gap: 8,
         padding: "8px 10px",
         marginBottom: 4,
-        background: active ? "#E8EEFC" : "transparent",
-        color: active ? "#1F4FBA" : "#5A6578",
+        background: active ? "#EBE9FB" : "transparent",
+        color: active ? BAR_DARK : "#5A6578",
         borderRadius: 6,
         fontSize: 12,
         fontWeight: active ? 600 : 500
@@ -431,7 +429,11 @@ function Column({
           }}
         />
         <span
-          style={{ fontSize: 11, fontWeight: 700, color: "#1E2540" }}
+          style={{
+            fontSize: 11,
+            fontWeight: 700,
+            color: HEADLINE
+          }}
         >
           {label}
         </span>
@@ -474,7 +476,7 @@ function Column({
               style={{
                 fontSize: 11,
                 fontWeight: 600,
-                color: "#1E2540",
+                color: HEADLINE,
                 lineHeight: 1.2
               }}
             >

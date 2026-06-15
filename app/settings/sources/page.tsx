@@ -290,25 +290,273 @@ export default function SourcesSettingsPage() {
               )}
             </SourceCard>
 
-            {/* SEMrush + Ahrefs placeholders for Phase 2 */}
-            <SourceCard
-              icon={<Globe className="size-5 text-ink-400" />}
+            {/* SEMrush */}
+            <KeyAuthSourceCard
+              icon={<Globe className="size-5 text-amber-600" />}
               title="SEMrush"
-              description="Competitor keyword gaps. Phase 2 — coming next session."
-              status="disconnected"
-              comingSoon
+              description="Pulls top organic keywords for your competitors (uses Settings → Brand → Competitors). Scored by volume × achievability."
+              source="semrush"
+              row={data?.sources.find((s) => s.name === "semrush")}
+              regionField={{
+                label: "Database",
+                placeholder: "us",
+                options: [
+                  { value: "us", label: "United States (us)" },
+                  { value: "uk", label: "United Kingdom (uk)" },
+                  { value: "in", label: "India (in)" },
+                  { value: "ca", label: "Canada (ca)" },
+                  { value: "au", label: "Australia (au)" },
+                  { value: "de", label: "Germany (de)" },
+                  { value: "fr", label: "France (fr)" }
+                ]
+              }}
+              onRefresh={refresh}
             />
-            <SourceCard
-              icon={<Globe className="size-5 text-ink-400" />}
+
+            {/* Ahrefs */}
+            <KeyAuthSourceCard
+              icon={<Globe className="size-5 text-emerald-600" />}
               title="Ahrefs"
-              description="Backlink + keyword data. Phase 2 — coming next session."
-              status="disconnected"
-              comingSoon
+              description="Pulls organic keyword rankings for your competitors via Ahrefs Site Explorer (v3 API). Requires a paid Ahrefs API plan."
+              source="ahrefs"
+              row={data?.sources.find((s) => s.name === "ahrefs")}
+              regionField={{
+                label: "Country",
+                placeholder: "us",
+                options: [
+                  { value: "us", label: "United States (us)" },
+                  { value: "uk", label: "United Kingdom (uk)" },
+                  { value: "in", label: "India (in)" },
+                  { value: "ca", label: "Canada (ca)" },
+                  { value: "au", label: "Australia (au)" },
+                  { value: "de", label: "Germany (de)" },
+                  { value: "fr", label: "France (fr)" }
+                ]
+              }}
+              onRefresh={refresh}
             />
           </>
         )}
       </div>
     </div>
+  );
+}
+
+// ── KeyAuthSourceCard ─────────────────────────────────────────────────
+// Card for API-key-auth sources (SEMrush, Ahrefs). When disconnected:
+// shows API key paste field + region/database picker + Test + Connect
+// buttons. When connected: shows current config + Sync + Disconnect.
+
+function KeyAuthSourceCard({
+  icon,
+  title,
+  description,
+  source,
+  row,
+  regionField,
+  onRefresh
+}: {
+  icon: React.ReactNode;
+  title: string;
+  description: string;
+  source: "semrush" | "ahrefs";
+  row?: SourceRow;
+  regionField: {
+    label: string;
+    placeholder: string;
+    options: { value: string; label: string }[];
+  };
+  onRefresh: () => Promise<void>;
+}) {
+  const connected = row?.status === "connected";
+  const [apiKey, setApiKey] = useState("");
+  const [region, setRegion] = useState(regionField.placeholder);
+  const [testing, setTesting] = useState(false);
+  const [connecting, setConnecting] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+
+  // Body key matches the lib client interface — region maps to
+  // `database` for SEMrush and `country` for Ahrefs.
+  const regionKey = source === "semrush" ? "database" : "country";
+
+  async function handleTest() {
+    if (!apiKey.trim()) {
+      toast("Paste an API key first", "error");
+      return;
+    }
+    setTesting(true);
+    try {
+      const res = await fetch(`/api/sources/${source}/test`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ apiKey, [regionKey]: region })
+      });
+      const json = await res.json();
+      if (json.ok) {
+        toast(`${title} key is valid`, "success");
+      } else {
+        toast(json.message || "Connection test failed", "error");
+      }
+    } catch (err) {
+      toast((err as Error).message, "error");
+    } finally {
+      setTesting(false);
+    }
+  }
+
+  async function handleConnect() {
+    if (!apiKey.trim()) {
+      toast("Paste an API key first", "error");
+      return;
+    }
+    setConnecting(true);
+    try {
+      const res = await fetch(`/api/sources/${source}/connect`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ apiKey, [regionKey]: region })
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Connect failed");
+      toast(`${title} connected`, "success");
+      setApiKey("");
+      await onRefresh();
+    } catch (err) {
+      toast((err as Error).message, "error");
+    } finally {
+      setConnecting(false);
+    }
+  }
+
+  async function handleSync() {
+    setSyncing(true);
+    try {
+      const res = await fetch(`/api/sources/${source}/sync`, {
+        method: "POST"
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Sync failed");
+      const errs = (json.errors as string[]) || [];
+      toast(
+        `Sync complete — ${json.opportunities} opportunities (sampled ${
+          json.sampled
+        } across ${json.competitorsProcessed} competitors)${
+          errs.length ? `, ${errs.length} errors` : ""
+        }`,
+        errs.length ? "info" : "success"
+      );
+      await onRefresh();
+    } catch (err) {
+      toast((err as Error).message, "error");
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  async function handleDisconnect() {
+    if (
+      !confirm(
+        `Disconnect ${title}? Stored API key will be deleted. Discovered opportunities will remain.`
+      )
+    )
+      return;
+    try {
+      const res = await fetch(`/api/sources/${source}`, {
+        method: "DELETE"
+      });
+      if (!res.ok) throw new Error("Failed to disconnect");
+      toast(`${title} disconnected`, "info");
+      await onRefresh();
+    } catch (err) {
+      toast((err as Error).message, "error");
+    }
+  }
+
+  const meta = (row?.metadata as { database?: string; country?: string } | null) || null;
+  const activeRegion = meta?.database || meta?.country || "—";
+
+  return (
+    <SourceCard
+      icon={icon}
+      title={title}
+      description={description}
+      status={row?.status || "disconnected"}
+      lastError={row?.lastError}
+      lastSyncedAt={row?.lastSyncedAt}
+    >
+      {connected ? (
+        <>
+          <div className="text-xs text-ink-600 mb-3">
+            Active {regionField.label.toLowerCase()}:{" "}
+            <span className="font-mono text-xs">{activeRegion}</span>
+          </div>
+          <div className="flex gap-2 flex-wrap">
+            <Button
+              variant="primary"
+              onClick={handleSync}
+              loading={syncing}
+            >
+              <RefreshCw className="size-4" />
+              Sync now
+            </Button>
+            <Button
+              variant="ghost"
+              onClick={handleDisconnect}
+              className="!text-rose-600 hover:!bg-rose-50"
+            >
+              <Unplug className="size-4" />
+              Disconnect
+            </Button>
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="grid sm:grid-cols-[1fr_160px] gap-2 mb-3">
+            <input
+              type="password"
+              className="input text-sm font-mono"
+              placeholder="Paste API key"
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+            />
+            <select
+              className="input text-sm"
+              value={region}
+              onChange={(e) => setRegion(e.target.value)}
+            >
+              {regionField.options.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex gap-2 flex-wrap">
+            <Button
+              variant="secondary"
+              onClick={handleTest}
+              loading={testing}
+              disabled={!apiKey.trim()}
+            >
+              Test
+            </Button>
+            <Button
+              variant="primary"
+              onClick={handleConnect}
+              loading={connecting}
+              disabled={!apiKey.trim()}
+            >
+              Connect
+            </Button>
+          </div>
+          <div className="text-[11px] text-ink-500 mt-3">
+            Test verifies the key without storing it. Connect encrypts and
+            saves it. SEMrush charges per API row; Ahrefs charges per
+            request — syncs are capped at 50 keywords per competitor.
+          </div>
+        </>
+      )}
+    </SourceCard>
   );
 }
 

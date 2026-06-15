@@ -1,6 +1,20 @@
 import type { Topic } from "./types";
 
-export function buildSlackMessage(topics: Topic[], appUrl: string) {
+// Lightweight shape so the cron can pass discovery rows without importing
+// the full Drizzle row type. Matches what the cron pulls + what we want
+// to show in Slack.
+export interface SlackDiscoveryItem {
+  source: string;
+  query: string;
+  score: number;
+  reason?: string | null;
+}
+
+export function buildSlackMessage(
+  topics: Topic[],
+  appUrl: string,
+  discoveries: SlackDiscoveryItem[] = []
+) {
   const lines: string[] = [];
   lines.push(":fire: *Weekly Content Opportunities*");
   lines.push("");
@@ -12,6 +26,23 @@ export function buildSlackMessage(topics: Topic[], appUrl: string) {
     lines.push(`   • CTA: ${t.suggestedCta}`);
     lines.push("");
   });
+
+  // Discovery digest — only included when there's something to report.
+  if (discoveries.length > 0) {
+    lines.push(":telescope: *Top Discovered Opportunities (last 7 days)*");
+    lines.push("");
+    discoveries.slice(0, 5).forEach((d, i) => {
+      lines.push(
+        `${i + 1}. *${d.query}*  _via ${d.source.toUpperCase()}_  ` +
+          `(score ${d.score}/100)`
+      );
+      if (d.reason) {
+        lines.push(`   • ${d.reason}`);
+      }
+    });
+    lines.push("");
+  }
+
   lines.push(`:point_right: View all: ${appUrl}`);
   return lines.join("\n");
 }

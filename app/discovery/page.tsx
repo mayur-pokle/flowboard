@@ -95,6 +95,46 @@ export default function DiscoveryPage() {
     });
   }, [items, query, filterSource, showMoved]);
 
+  // Group filtered rows by normalized query so the same keyword from
+  // GSC + SEMrush + Ahrefs collapses into one card. Aggregate score is
+  // the max of source scores plus a multi-source bonus (5 per extra
+  // source, capped at 15) — multiple sources pointing to the same query
+  // is a strong signal.
+  const grouped = useMemo(() => {
+    type Group = {
+      key: string;
+      query: string;
+      items: Discovery[];
+      score: number;
+      anyMoved: boolean;
+    };
+    const map = new Map<string, Group>();
+    for (const d of filtered) {
+      const key = d.query.toLowerCase().trim();
+      const existing = map.get(key);
+      if (existing) {
+        existing.items.push(d);
+        if (d.status === "moved") existing.anyMoved = true;
+      } else {
+        map.set(key, {
+          key,
+          query: d.query,
+          items: [d],
+          score: 0,
+          anyMoved: d.status === "moved"
+        });
+      }
+    }
+    const out = Array.from(map.values());
+    for (const g of out) {
+      const maxScore = Math.max(...g.items.map((i) => i.score));
+      const bonus = Math.min(15, Math.max(0, g.items.length - 1) * 5);
+      g.score = Math.min(100, maxScore + bonus);
+    }
+    out.sort((a, b) => b.score - a.score);
+    return out;
+  }, [filtered]);
+
   async function handleMove(id: string) {
     try {
       const res = await fetch(`/api/discoveries/${id}/move-to-board`, {
@@ -175,26 +215,208 @@ export default function DiscoveryPage() {
           />
           Show already-moved
         </label>
-        <Badge tone="neutral">{filtered.length} rows</Badge>
+        <Badge tone="neutral">
+          {grouped.length} {grouped.length === 1 ? "keyword" : "keywords"}
+          {filtered.length !== grouped.length
+            ? ` (${filtered.length} source rows)`
+            : ""}
+        </Badge>
       </div>
 
       <div className="flex-1 min-h-0 overflow-auto scrollbar-thin px-8 py-6">
         {loading ? (
           <div className="text-sm text-ink-500">Loading…</div>
-        ) : filtered.length === 0 ? (
+        ) : grouped.length === 0 ? (
           <EmptyState />
         ) : (
           <div className="flex flex-col gap-3 max-w-5xl">
-            {filtered.map((d) => (
-              <DiscoveryRow
-                key={d.id}
-                d={d}
-                onMove={() => handleMove(d.id)}
-                onDismiss={() => handleDismiss(d.id)}
+            {grouped.map((g) => (
+              <GroupedRow
+                key={g.key}
+                items={g.items}
+                aggregateScore={g.score}
+                anyMoved={g.anyMoved}
+                onMove={() => {
+                  // Move the highest-scored row in the group.
+                  const best = [...g.items].sort(
+                    (a, b) => b.score - a.score
+                  )[0];
+                  if (best) handleMove(best.id);
+                }}
+                onDismiss={async () => {
+                  // Dismiss every row in the group.
+                  for (const it of g.items) await handleDismiss(it.id);
+                }}
               />
             ))}
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+// Renders a grouped opportunity — the same query coming from one or more
+// sources. Shows a source pill for each contributor and lists every
+// source's reason line so the user can see all signals at once.
+function GroupedRow({
+  items,
+  aggregateScore,
+  anyMoved,
+  onMove,
+  onDismiss
+}: {
+  items: Discovery[];
+  aggregateScore: number;
+  anyMoved: boolean;
+  onMove: () => void;
+  onDismiss: () => void;
+}) {
+  const best = items.reduce((a, b) => (a.score >= b.score ? a : b));
+  const sources = Array.from(new Set(items.map((i) => i.source)));
+
+  // For metrics, use the source-specific metrics from whichever row had
+  // each field. GSC has impressions/CTR/position; SEMrush + Ahrefs have
+  // volume/position.
+  const gscRow = items.find((i) => i.source === "gsc");
+  const compRow =
+    items.find((i) => i.source === "semrush") ||
+    items.find((i) => i.source === "ahrefs");
+
+  return (
+    <div className="card p-4 hover:shadow-cardHover transition">
+      <div className="flex items-start justify-between gap-3 flex-wrap mb-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {sources.map((s) => (
+            <Badge
+              key={s}
+              tone={SOURCE_TONE[s] || "neutral"}
+              className="uppercase tracking-wider"
+            >
+              {SOURCE_LABEL[s] || s}
+            </Badge>
+          ))}
+          <Badge tone={scoreTone(aggregateScore)}>
+            Score {aggregateScore}
+            {items.length > 1 ? (
+              <span className="ml-1 opacity-70">
+                ({items.length} sources)
+              </span>
+            ) : null}
+          </Badge>
+          {anyMoved ? <Badge tone="success">Moved to Kanban</Badge> : null}
+        </div>
+      </div>
+
+      <div className="font-mono text-base font-semibold text-ink-900 mb-1.5">
+        {best.query}
+      </div>
+
+      {best.url ? (
+        <a
+          href={best.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1.5 text-xs text-brand-700 hover:underline font-mono mb-2"
+        >
+          <ExternalLink className="size-3" />
+          {best.url}
+        </a>
+      ) : null}
+
+      {/* Per-source reasons */}
+      <ul className="space-y-1 mb-3">
+        {items.map((it) => (
+          <li
+            key={it.id}
+            className="text-xs text-ink-600 flex items-start gap-2"
+          >
+            <span
+              className="text-[10px] font-semibold uppercase tracking-wider text-ink-500 mt-0.5 w-16 shrink-0"
+            >
+              {SOURCE_LABEL[it.source] || it.source}
+            </span>
+            <span className="flex-1">{it.reason || "—"}</span>
+          </li>
+        ))}
+      </ul>
+
+      {/* Metrics grid — varies by which sources contributed */}
+      {gscRow ? (
+        <div className="grid grid-cols-4 gap-3 mt-3 mb-4 text-xs">
+          <Metric
+            label="Impressions"
+            value={(gscRow.metrics as { impressions?: number } | null)?.impressions?.toLocaleString()}
+          />
+          <Metric
+            label="Clicks"
+            value={(gscRow.metrics as { clicks?: number } | null)?.clicks?.toLocaleString()}
+          />
+          <Metric
+            label="CTR"
+            value={
+              (gscRow.metrics as { ctr?: number } | null)?.ctr != null
+                ? `${(((gscRow.metrics as { ctr?: number } | null)?.ctr ?? 0) * 100).toFixed(1)}%`
+                : "—"
+            }
+          />
+          <Metric
+            label="Position"
+            value={
+              (gscRow.metrics as { position?: number } | null)?.position != null
+                ? ((gscRow.metrics as { position?: number } | null)!.position ?? 0).toFixed(1)
+                : "—"
+            }
+          />
+        </div>
+      ) : compRow ? (
+        <div className="grid grid-cols-4 gap-3 mt-3 mb-4 text-xs">
+          <Metric
+            label="Volume / mo"
+            value={(compRow.metrics as { volume?: number } | null)?.volume?.toLocaleString()}
+          />
+          <Metric
+            label="Competitor rank"
+            value={
+              (compRow.metrics as { position?: number } | null)?.position != null
+                ? `#${((compRow.metrics as { position?: number } | null)!.position ?? 0).toFixed(0)}`
+                : "—"
+            }
+          />
+          <Metric
+            label="KD"
+            value={(compRow.metrics as { difficulty?: number } | null)?.difficulty != null
+                ? String((compRow.metrics as { difficulty?: number } | null)!.difficulty)
+                : "—"
+            }
+          />
+          <Metric
+            label="CPC"
+            value={(compRow.metrics as { cpc?: number } | null)?.cpc != null
+                ? `$${((compRow.metrics as { cpc?: number } | null)!.cpc ?? 0).toFixed(2)}`
+                : "—"
+            }
+          />
+        </div>
+      ) : null}
+
+      <div className="flex items-center justify-end gap-2 pt-3 border-t border-ink-100">
+        <Button
+          variant="ghost"
+          onClick={onDismiss}
+          className="!text-ink-400 hover:!text-rose-600"
+        >
+          <Trash2 className="size-4" />
+          Dismiss
+        </Button>
+        <Button
+          variant="primary"
+          onClick={onMove}
+          disabled={anyMoved}
+        >
+          <Plus className="size-4" />
+          Move to Kanban
+        </Button>
       </div>
     </div>
   );

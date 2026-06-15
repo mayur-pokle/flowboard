@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { desc } from "drizzle-orm";
+import { and, desc, gte, ne } from "drizzle-orm";
 import {
   generateTopics,
   type BrandContext,
@@ -7,9 +7,19 @@ import {
   type PriorityKeywordCtx,
   type TieredCompetitor
 } from "@/lib/ai";
-import { buildSlackMessage, postToSlack } from "@/lib/slack";
+import {
+  buildSlackMessage,
+  postToSlack,
+  type SlackDiscoveryItem
+} from "@/lib/slack";
 import { db } from "@/db";
-import { keywords, existingContent, competitors } from "@/db/schema";
+import {
+  keywords,
+  existingContent,
+  competitors,
+  discoveredOpportunities
+} from "@/db/schema";
+import { syncAllConnectedSources } from "@/lib/sync-runners";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -100,16 +110,62 @@ export async function GET(req: Request) {
     existingContent: existingItems
   };
 
+  // ── Phase 3: refresh every connected source first ──
+  // Best-effort: one source failing doesn't abort topic generation or
+  // the Slack post. Results are surfaced in the response payload.
+  let sourceResults: Awaited<ReturnType<typeof syncAllConnectedSources>> =
+    [];
+  try {
+    sourceResults = await syncAllConnectedSources();
+  } catch (err) {
+    console.warn("[cron] source sync failed:", err);
+  }
+
   try {
     const { topics, provider } = await generateTopics(ctx, 8);
 
+    // Pull the top 5 NEW high-score opportunities created in the last
+    // 7 days (after the syncs above ran). These get appended to the
+    // Slack digest so the team sees fresh, data-grounded picks.
+    let topDiscoveries: SlackDiscoveryItem[] = [];
+    try {
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      const rows = await db
+        .select({
+          source: discoveredOpportunities.source,
+          query: discoveredOpportunities.query,
+          score: discoveredOpportunities.score,
+          reason: discoveredOpportunities.reason
+        })
+        .from(discoveredOpportunities)
+        .where(
+          and(
+            ne(discoveredOpportunities.status, "dismissed"),
+            ne(discoveredOpportunities.status, "moved"),
+            gte(discoveredOpportunities.createdAt, sevenDaysAgo)
+          )
+        )
+        .orderBy(desc(discoveredOpportunities.score))
+        .limit(5);
+      topDiscoveries = rows.map((r) => ({
+        source: r.source,
+        query: r.query,
+        score: r.score,
+        reason: r.reason
+      }));
+    } catch (err) {
+      console.warn("[cron] failed to pull discovery digest:", err);
+    }
+
     const webhook = process.env.SLACK_WEBHOOK_URL;
     if (webhook) {
-      // Production URL. NEXT_PUBLIC_APP_URL overrides for previews / dev.
       const appUrl =
         process.env.NEXT_PUBLIC_APP_URL ||
         "https://flowboard-two-amber.vercel.app";
-      await postToSlack(webhook, buildSlackMessage(topics, `${appUrl}/board`));
+      await postToSlack(
+        webhook,
+        buildSlackMessage(topics, `${appUrl}/board`, topDiscoveries)
+      );
     }
 
     return NextResponse.json({
@@ -117,11 +173,13 @@ export async function GET(req: Request) {
       provider,
       count: topics.length,
       slackPosted: Boolean(webhook),
-      topics
+      topics,
+      sourceSyncs: sourceResults,
+      discoveryDigest: topDiscoveries
     });
   } catch (err) {
     return NextResponse.json(
-      { ok: false, error: (err as Error).message },
+      { ok: false, error: (err as Error).message, sourceSyncs: sourceResults },
       { status: 500 }
     );
   }

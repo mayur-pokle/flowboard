@@ -9,7 +9,8 @@ import {
   RefreshCw,
   ExternalLink,
   Globe,
-  Unplug
+  Unplug,
+  ArrowUpCircle
 } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/Button";
@@ -313,6 +314,14 @@ export default function SourcesSettingsPage() {
               onRefresh={refresh}
             />
 
+            {/* Refresh detector */}
+            <RefreshDetectorCard
+              row={data?.sources.find((s) => s.name === "refresh")}
+              gscConnected={gscConnected}
+              gscHasSite={Boolean(gsc?.metadata?.siteUrl)}
+              onRefresh={refresh}
+            />
+
             {/* Ahrefs */}
             <KeyAuthSourceCard
               icon={<Globe className="size-5 text-emerald-600" />}
@@ -339,6 +348,86 @@ export default function SourcesSettingsPage() {
         )}
       </div>
     </div>
+  );
+}
+
+// ── RefreshDetectorCard ───────────────────────────────────────────────
+// No external credentials — uses the already-connected GSC + the
+// Content Library. Disabled until both prerequisites are in place.
+
+function RefreshDetectorCard({
+  row,
+  gscConnected,
+  gscHasSite,
+  onRefresh
+}: {
+  row?: SourceRow;
+  gscConnected: boolean;
+  gscHasSite: boolean;
+  onRefresh: () => Promise<void>;
+}) {
+  const [syncing, setSyncing] = useState(false);
+  const ready = gscConnected && gscHasSite;
+
+  async function handleSync() {
+    setSyncing(true);
+    try {
+      const res = await fetch("/api/sources/refresh/sync", {
+        method: "POST"
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) {
+        throw new Error(json.error || "Refresh sync failed");
+      }
+      toast(
+        `Refresh scan complete — ${json.candidates} candidate${
+          json.candidates === 1 ? "" : "s"
+        } (checked ${json.pagesChecked} pages)`,
+        json.candidates > 0 ? "success" : "info"
+      );
+      await onRefresh();
+    } catch (err) {
+      toast((err as Error).message, "error");
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  return (
+    <SourceCard
+      icon={<ArrowUpCircle className="size-5 text-rose-600" />}
+      title="Refresh detector"
+      description="Joins Content Library with GSC page-level data to flag pages whose rank dropped, lost top-5, are stale, or under-perform CTR for their position. No external credentials needed."
+      status={row?.status || "disconnected"}
+      lastError={row?.lastError}
+      lastSyncedAt={row?.lastSyncedAt}
+    >
+      {!ready ? (
+        <div className="rounded-md border border-amber-200 bg-amber-50/60 p-3 text-xs text-amber-900">
+          <AlertTriangle className="size-4 text-amber-600 inline mr-1 mb-1" />
+          {!gscConnected
+            ? "Connect Google Search Console first."
+            : "Pick a GSC property in the GSC card above."}{" "}
+          Also make sure your Content Library has pages in it (Settings →
+          Content library).
+        </div>
+      ) : (
+        <div className="flex gap-2 flex-wrap">
+          <Button
+            variant="primary"
+            onClick={handleSync}
+            loading={syncing}
+          >
+            <RefreshCw className="size-4" />
+            Run refresh scan
+          </Button>
+          <div className="text-xs text-ink-500 self-center">
+            Compares last 28d vs previous 28d for every page in your
+            Content Library.
+          </div>
+        </div>
+      )}
+    </SourceCard>
   );
 }
 

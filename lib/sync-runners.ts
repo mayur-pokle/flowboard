@@ -355,15 +355,53 @@ export async function syncAhrefs(): Promise<SyncResult> {
 
 // Runs every connected source. Best-effort: one source failing doesn't
 // abort the others. Returns a per-source result array.
-export async function syncAllConnectedSources(): Promise<SyncResult[]> {
+//
+// `refresh` is special — it has no external credentials, so we run it
+// last (if any opportunities exist to score against) and only when both
+// GSC + Content Library have data. The runner itself raises a clear
+// error message if those preconditions aren't met, so we just attempt
+// it and catch.
+export async function syncAllConnectedSources(): Promise<
+  Array<SyncResult | { source: "refresh"; ok: boolean; error?: string }>
+> {
   const rows = await db.select().from(sourceConfigs);
-  const results: SyncResult[] = [];
+  const results: Array<
+    SyncResult | { source: "refresh"; ok: boolean; error?: string }
+  > = [];
+  let gscRanSuccessfully = false;
   for (const r of rows) {
     if (r.status !== "connected") continue;
-    if (r.name === "gsc") results.push(await syncGsc());
-    else if (r.name === "semrush") results.push(await syncSemrush());
-    else if (r.name === "ahrefs") results.push(await syncAhrefs());
+    if (r.name === "gsc") {
+      const res = await syncGsc();
+      results.push(res);
+      if (res.ok) gscRanSuccessfully = true;
+    } else if (r.name === "semrush") {
+      results.push(await syncSemrush());
+    } else if (r.name === "ahrefs") {
+      results.push(await syncAhrefs());
+    }
   }
+
+  // If GSC succeeded this run, also attempt refresh detection. Lazy
+  // import to avoid a circular dependency.
+  if (gscRanSuccessfully) {
+    try {
+      const { syncRefresh } = await import("@/lib/refresh-runner");
+      const r = await syncRefresh();
+      results.push({
+        source: "refresh",
+        ok: r.ok,
+        error: r.error
+      });
+    } catch (err) {
+      results.push({
+        source: "refresh",
+        ok: false,
+        error: (err as Error).message
+      });
+    }
+  }
+
   return results;
 }
 

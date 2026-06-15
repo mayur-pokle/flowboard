@@ -138,3 +138,44 @@ export async function fetchSearchAnalytics(
     position: r.position || 0
   }));
 }
+
+/**
+ * Page-level performance for a fixed window. Used by the refresh
+ * detector to compare current vs previous periods.
+ */
+export async function fetchPagePerformance(
+  tokens: GSCTokens,
+  siteUrl: string,
+  startDate: Date,
+  endDate: Date
+): Promise<
+  Array<{
+    page: string;
+    impressions: number;
+    clicks: number;
+    ctr: number;
+    position: number;
+  }>
+> {
+  const client = getOAuthClient();
+  client.setCredentials(tokens);
+  const sc = google.webmasters({ version: "v3", auth: client });
+  const fmt = (d: Date) => d.toISOString().slice(0, 10);
+  const res = await sc.searchanalytics.query({
+    siteUrl,
+    requestBody: {
+      startDate: fmt(startDate),
+      endDate: fmt(endDate),
+      dimensions: ["page"],
+      rowLimit: 5000,
+      dataState: "all"
+    }
+  });
+  return (res.data.rows || []).map((r) => ({
+    page: r.keys?.[0] || "",
+    impressions: r.impressions || 0,
+    clicks: r.clicks || 0,
+    ctr: r.ctr || 0,
+    position: r.position || 0
+  }));
+}

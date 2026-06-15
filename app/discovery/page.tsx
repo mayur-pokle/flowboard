@@ -36,15 +36,17 @@ interface Discovery {
 const SOURCE_LABEL: Record<string, string> = {
   gsc: "GSC",
   semrush: "SEMrush",
-  ahrefs: "Ahrefs"
+  ahrefs: "Ahrefs",
+  refresh: "Refresh"
 };
 const SOURCE_TONE: Record<
   string,
-  "info" | "success" | "warn" | "neutral"
+  "info" | "success" | "warn" | "neutral" | "danger"
 > = {
   gsc: "info",
   semrush: "warn",
-  ahrefs: "success"
+  ahrefs: "success",
+  refresh: "danger"
 };
 
 function scoreTone(score: number): "success" | "info" | "warn" | "danger" {
@@ -202,9 +204,10 @@ export default function DiscoveryPage() {
           className="input !w-auto !py-2"
         >
           <option value="all">All sources</option>
-          <option value="gsc">GSC</option>
-          <option value="semrush">SEMrush</option>
-          <option value="ahrefs">Ahrefs</option>
+          <option value="gsc">GSC — new opportunities</option>
+          <option value="semrush">SEMrush — competitor gaps</option>
+          <option value="ahrefs">Ahrefs — competitor gaps</option>
+          <option value="refresh">Refresh — needs updating</option>
         </select>
         <label className="flex items-center gap-2 text-xs text-ink-700 cursor-pointer select-none">
           <input

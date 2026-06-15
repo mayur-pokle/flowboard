@@ -231,6 +231,60 @@ export const taskComments = pgTable("taskComments", {
   updatedAt: timestamp("updatedAt", { mode: "date" }).defaultNow().notNull()
 });
 
+// ───────────────────────── Source integrations ─────────────────────────
+// Per-source connection config + encrypted credentials. One row per source
+// (gsc, semrush, ahrefs, ga4, …) for the singleton workspace. Encrypted
+// blob is AES-256-GCM ciphertext + IV + auth tag, base64-encoded.
+
+export const sourceConfigs = pgTable("sourceConfigs", {
+  // Source name acts as the primary key — there's only ever one config
+  // per source per workspace.
+  name: text("name").primaryKey(),
+  // "connected" | "disconnected" | "error"
+  status: text("status").default("disconnected").notNull(),
+  // Encrypted JSON: tokens for OAuth sources, raw API key for key-auth.
+  encryptedCredentials: text("encryptedCredentials"),
+  // Free-form metadata: selected GSC property URL, SEMrush domain, etc.
+  metadata: jsonb("metadata"),
+  // Last error message (if status === "error"), for diagnostics.
+  lastError: text("lastError"),
+  lastSyncedAt: timestamp("lastSyncedAt", { mode: "date" }),
+  connectedAt: timestamp("connectedAt", { mode: "date" }),
+  updatedAt: timestamp("updatedAt", { mode: "date" }).defaultNow().notNull()
+});
+
+// ── Discovered opportunities ──
+// Rows pulled from external sources (GSC queries, competitor keywords,
+// backlink targets). Each row is a "thing the user might want to write
+// about or refresh", scored 0-100 by combining demand + opportunity gap.
+
+export const discoveredOpportunities = pgTable("discoveredOpportunities", {
+  id: text("id").primaryKey(),
+  // Where this row came from. Matches sourceConfigs.name.
+  source: text("source").notNull(),
+  // The query string / keyword the opportunity is about.
+  query: text("query").notNull(),
+  // For GSC: the page that already ranks for this query (if any).
+  url: text("url"),
+  // Raw metrics from the source — kept as jsonb so adding new fields per
+  // source doesn't require a migration.
+  metrics: jsonb("metrics"),
+  // 0-100 priority score. Higher = more worth attention.
+  score: integer("score").default(0).notNull(),
+  // "new" | "moved" | "dismissed". "moved" → user moved to Kanban; the
+  // source still pulls the row but we hide it from the discovery feed.
+  status: text("status").default("new").notNull(),
+  // Optional one-liner explaining WHY this scored high (UI tooltip).
+  reason: text("reason"),
+  // If user moved this to Kanban, the resulting task id.
+  movedToTaskId: text("movedToTaskId"),
+  // Stable dedup key per source so re-syncs UPSERT instead of duplicating.
+  // e.g. "gsc::sc-domain:acme.com::month-end close software"
+  dedupKey: text("dedupKey").notNull().unique(),
+  createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt", { mode: "date" }).defaultNow().notNull()
+});
+
 // Flag to know if the workspace has ever been seeded from a browser
 // snapshot, so we don't re-migrate on every sign-in.
 export const meta = pgTable("meta", {
@@ -246,3 +300,6 @@ export type DbCompetitor = typeof competitors.$inferSelect;
 export type DbKeyword = typeof keywords.$inferSelect;
 export type DbExistingContent = typeof existingContent.$inferSelect;
 export type DbTaskComment = typeof taskComments.$inferSelect;
+export type DbSourceConfig = typeof sourceConfigs.$inferSelect;
+export type DbDiscoveredOpportunity =
+  typeof discoveredOpportunities.$inferSelect;

@@ -2,12 +2,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { KeyRound, ListChecks, Library } from "lucide-react";
+import { KeyRound, ListChecks, Library, Plug } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // Sub-navigation rendered at the top of every /settings/* page so users can
-// jump between brand profile / API providers, keyword bank, and the existing
-// content library.
+// jump between brand profile / API providers, keyword bank, content
+// library, and data source connectors.
 const tabs = [
   {
     href: "/settings/api",
@@ -26,6 +26,12 @@ const tabs = [
     label: "Content library",
     icon: Library,
     description: "Existing published content for cannibalization checks"
+  },
+  {
+    href: "/settings/sources",
+    label: "Data sources",
+    icon: Plug,
+    description: "Connect GSC, SEMrush, Ahrefs"
   }
 ];
 

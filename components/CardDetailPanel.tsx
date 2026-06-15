@@ -15,7 +15,12 @@ import {
   ChevronDown,
   ChevronRight,
   Pencil,
-  MessageSquare
+  MessageSquare,
+  Globe,
+  TrendingUp,
+  TrendingDown,
+  Minus,
+  ExternalLink as ExternalLinkIcon
 } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { Button } from "@/components/ui/Button";
@@ -25,6 +30,7 @@ import { copyToClipboard, formatDate } from "@/lib/utils";
 import type { GeneratedContent, Priority, Status, Task } from "@/lib/types";
 import { ContentEditor } from "@/components/ContentEditor";
 import { CommentsSection } from "@/components/CommentsSection";
+import { PublishPromptSection } from "@/components/PublishPromptSection";
 
 const STATUS_LABELS: Record<Status, string> = {
   todo: "To Do",
@@ -41,6 +47,8 @@ export function CardDetailPanel({ task }: { task: Task }) {
   const removeTaskTag = useStore((s) => s.removeTaskTag);
   const setTaskContentStatus = useStore((s) => s.setTaskContentStatus);
   const setTaskContent = useStore((s) => s.setTaskContent);
+  const setTaskPublishedUrl = useStore((s) => s.setTaskPublishedUrl);
+  const fetchTaskPerformance = useStore((s) => s.fetchTaskPerformance);
   const selectTask = useStore((s) => s.selectTask);
   const deleteTask = useStore((s) => s.deleteTask);
 
@@ -236,6 +244,27 @@ export function CardDetailPanel({ task }: { task: Task }) {
           ) : null}
         </Section>
 
+        {/* Performance — live GSC metrics for the published URL */}
+        <Section title="Performance">
+          <PerformanceSection
+            task={task}
+            onUrlChange={(url) => setTaskPublishedUrl(task.id, url)}
+            onRefresh={async () => {
+              try {
+                const res = await fetchTaskPerformance(task.id);
+                toast(
+                  res.hasData
+                    ? "Performance refreshed from GSC"
+                    : "No GSC data found for this URL yet — it may take a few days after publishing.",
+                  res.hasData ? "success" : "info"
+                );
+              } catch (err) {
+                toast((err as Error).message, "error");
+              }
+            }}
+          />
+        </Section>
+
         {/* Content generation status */}
         <Section title="Content generation">
           <ContentStatusRow
@@ -359,6 +388,13 @@ export function CardDetailPanel({ task }: { task: Task }) {
                     </ul>
                   </CollapsibleField>
                 ) : null}
+
+                {/* Publish prompt — copy-paste into Claude Desktop with
+                    the Webflow MCP connector enabled. Handles both
+                    publishing and internal linking. */}
+                <div className="mt-4">
+                  <PublishPromptSection task={task} />
+                </div>
               </>
             )}
           </Section>
@@ -439,6 +475,218 @@ export function CardDetailPanel({ task }: { task: Task }) {
       </div>
     </div>
   );
+}
+
+// ── PerformanceSection ────────────────────────────────────────────────
+// Live GSC metrics for the task's publishedUrl. Empty state when no URL
+// is set yet. Delta arrows for each metric vs the previous 28d period.
+
+function PerformanceSection({
+  task,
+  onUrlChange,
+  onRefresh
+}: {
+  task: Task;
+  onUrlChange: (url: string) => void;
+  onRefresh: () => Promise<void>;
+}) {
+  const [draft, setDraft] = useState(task.publishedUrl || "");
+  const [refreshing, setRefreshing] = useState(false);
+  // Sync local draft when the task changes externally.
+  if (
+    draft !== (task.publishedUrl || "") &&
+    document.activeElement?.tagName !== "INPUT"
+  ) {
+    setDraft(task.publishedUrl || "");
+  }
+
+  const metrics = task.publishedUrlMetrics;
+  const hasMetrics =
+    Boolean(metrics) &&
+    (metrics!.current.impressions > 0 || metrics!.previous.impressions > 0);
+
+  return (
+    <>
+      <Field label="Published URL">
+        <div className="flex items-center gap-2">
+          <Globe
+            className={
+              "size-4 shrink-0 " +
+              (draft ? "text-brand-600" : "text-ink-300")
+            }
+          />
+          <input
+            type="text"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={() => {
+              if (draft.trim() !== (task.publishedUrl || ""))
+                onUrlChange(draft);
+            }}
+            placeholder="https://your-site.com/blog/article-slug"
+            className="input text-sm font-mono"
+          />
+          {task.publishedUrl ? (
+            <a
+              href={task.publishedUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="p-2 text-ink-400 hover:text-brand-700 rounded shrink-0"
+              aria-label="Open URL in new tab"
+            >
+              <ExternalLinkIcon className="size-4" />
+            </a>
+          ) : null}
+        </div>
+      </Field>
+
+      {!task.publishedUrl ? (
+        <div className="text-xs text-ink-500 italic">
+          Add the live URL once the article publishes to track its GSC
+          performance directly in this card.
+        </div>
+      ) : (
+        <>
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div className="text-xs text-ink-500">
+              {metrics?.fetchedAt ? (
+                <>
+                  Last refreshed{" "}
+                  <span title={new Date(metrics.fetchedAt).toLocaleString()}>
+                    {timeAgo(metrics.fetchedAt)}
+                  </span>{" "}
+                  · last 28d vs previous 28d
+                </>
+              ) : (
+                "Not fetched yet"
+              )}
+            </div>
+            <Button
+              variant="secondary"
+              onClick={async () => {
+                setRefreshing(true);
+                try {
+                  await onRefresh();
+                } finally {
+                  setRefreshing(false);
+                }
+              }}
+              loading={refreshing}
+              className="!py-1.5"
+            >
+              <RefreshCw className="size-4" />
+              Refresh data
+            </Button>
+          </div>
+
+          {hasMetrics ? (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <MetricCard
+                label="Impressions"
+                current={metrics!.current.impressions}
+                previous={metrics!.previous.impressions}
+                format={(n) => n.toLocaleString()}
+                higherIsBetter
+              />
+              <MetricCard
+                label="Clicks"
+                current={metrics!.current.clicks}
+                previous={metrics!.previous.clicks}
+                format={(n) => n.toLocaleString()}
+                higherIsBetter
+              />
+              <MetricCard
+                label="Avg position"
+                current={metrics!.current.position}
+                previous={metrics!.previous.position}
+                format={(n) => (n ? n.toFixed(1) : "—")}
+                // Lower position number = better rank
+                higherIsBetter={false}
+              />
+              <MetricCard
+                label="CTR"
+                current={metrics!.current.ctr}
+                previous={metrics!.previous.ctr}
+                format={(n) => `${(n * 100).toFixed(2)}%`}
+                higherIsBetter
+              />
+            </div>
+          ) : metrics ? (
+            <div className="text-xs text-ink-500 italic">
+              GSC has no data for this URL in either window yet. Newly
+              published pages can take a few days to appear.
+            </div>
+          ) : null}
+        </>
+      )}
+    </>
+  );
+}
+
+function MetricCard({
+  label,
+  current,
+  previous,
+  format,
+  higherIsBetter
+}: {
+  label: string;
+  current: number;
+  previous: number;
+  format: (n: number) => string;
+  higherIsBetter: boolean;
+}) {
+  const delta = current - previous;
+  const pct =
+    previous === 0
+      ? current === 0
+        ? 0
+        : 100
+      : (delta / previous) * 100;
+  const isImprovement = higherIsBetter ? delta > 0 : delta < 0;
+  const isDegradation = higherIsBetter ? delta < 0 : delta > 0;
+  const Trend = delta === 0 ? Minus : isImprovement ? TrendingUp : TrendingDown;
+  const trendColor = isImprovement
+    ? "text-emerald-700 bg-emerald-50 ring-emerald-200"
+    : isDegradation
+    ? "text-rose-700 bg-rose-50 ring-rose-200"
+    : "text-ink-600 bg-ink-50 ring-ink-200";
+  return (
+    <div className="rounded-md border border-ink-200 bg-white p-3">
+      <div className="text-[10px] uppercase tracking-wider text-ink-500 mb-1">
+        {label}
+      </div>
+      <div className="text-xl font-semibold text-ink-900 tabular-nums">
+        {format(current)}
+      </div>
+      <div
+        className={
+          "inline-flex items-center gap-1 mt-2 px-1.5 py-0.5 rounded text-[10px] font-medium ring-1 ring-inset " +
+          trendColor
+        }
+      >
+        <Trend className="size-3" />
+        {delta === 0
+          ? "no change"
+          : `${pct > 0 ? "+" : ""}${pct.toFixed(0)}%`}
+      </div>
+    </div>
+  );
+}
+
+// Tiny relative-time helper. Kept local because the CommentsSection has
+// the same util — small, not worth a shared lib.
+function timeAgo(iso: string): string {
+  try {
+    const diff = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+    if (diff < 60) return "just now";
+    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+    if (diff < 86400 * 7) return `${Math.floor(diff / 86400)}d ago`;
+    return new Date(iso).toLocaleDateString();
+  } catch {
+    return "—";
+  }
 }
 
 function Section({

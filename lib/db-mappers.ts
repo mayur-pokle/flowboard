@@ -52,6 +52,9 @@ export function rowToTask(r: typeof tasks.$inferSelect): Task {
     contentStatus: r.contentStatus as Task["contentStatus"],
     content: normalizeContent(r.content),
     contentVersions: versions,
+    publishedUrl: r.publishedUrl ?? undefined,
+    publishedUrlMetrics:
+      (r.publishedUrlMetrics ?? undefined) as Task["publishedUrlMetrics"],
     createdAt: r.createdAt.toISOString(),
     updatedAt: r.updatedAt.toISOString()
   };

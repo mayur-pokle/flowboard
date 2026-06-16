@@ -140,6 +140,54 @@ export async function fetchSearchAnalytics(
 }
 
 /**
+ * Performance for one specific URL over a fixed window. Used by the
+ * per-article performance card. Returns null when GSC has no data for
+ * the URL in the given window.
+ */
+export async function fetchUrlPerformance(
+  tokens: GSCTokens,
+  siteUrl: string,
+  pageUrl: string,
+  startDate: Date,
+  endDate: Date
+): Promise<{
+  impressions: number;
+  clicks: number;
+  ctr: number;
+  position: number;
+} | null> {
+  const client = getOAuthClient();
+  client.setCredentials(tokens);
+  const sc = google.webmasters({ version: "v3", auth: client });
+  const fmt = (d: Date) => d.toISOString().slice(0, 10);
+  const res = await sc.searchanalytics.query({
+    siteUrl,
+    requestBody: {
+      startDate: fmt(startDate),
+      endDate: fmt(endDate),
+      // No dimensions — we want a single aggregate row for this URL.
+      dimensionFilterGroups: [
+        {
+          filters: [
+            { dimension: "page", operator: "equals", expression: pageUrl }
+          ]
+        }
+      ],
+      rowLimit: 1,
+      dataState: "all"
+    }
+  });
+  const row = res.data.rows?.[0];
+  if (!row) return null;
+  return {
+    impressions: row.impressions || 0,
+    clicks: row.clicks || 0,
+    ctr: row.ctr || 0,
+    position: row.position || 0
+  };
+}
+
+/**
  * Page-level performance for a fixed window. Used by the refresh
  * detector to compare current vs previous periods.
  */

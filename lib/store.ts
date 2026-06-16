@@ -47,6 +47,10 @@ interface Store extends AppState {
     contentStatus: Task["contentStatus"]
   ) => Promise<void>;
   setTaskContent: (id: string, content: GeneratedContent) => Promise<void>;
+  setTaskPublishedUrl: (id: string, url: string) => Promise<void>;
+  fetchTaskPerformance: (id: string) => Promise<{
+    hasData: boolean;
+  }>;
   selectTask: (id: string | null) => void;
   deleteTask: (id: string) => Promise<void>;
 
@@ -559,6 +563,48 @@ export const useStore = create<Store>()((set, get) => ({
       set({ tasks: prev });
       throw err;
     }
+  },
+
+  setTaskPublishedUrl: async (id, url) => {
+    const prev = get().tasks;
+    const trimmed = url.trim();
+    set({
+      tasks: prev.map((t) =>
+        t.id === id
+          ? {
+              ...t,
+              publishedUrl: trimmed || undefined,
+              updatedAt: new Date().toISOString()
+            }
+          : t
+      )
+    });
+    try {
+      await api(`/api/tasks/${id}`, {
+        method: "PATCH",
+        json: { publishedUrl: trimmed || null }
+      });
+    } catch (err) {
+      set({ tasks: prev });
+      throw err;
+    }
+  },
+
+  fetchTaskPerformance: async (id) => {
+    const res = await api<{
+      ok: boolean;
+      metrics: Task["publishedUrlMetrics"];
+      task: Task | null;
+      hasData: boolean;
+    }>(`/api/tasks/${id}/fetch-performance`, { method: "POST" });
+    if (res.task) {
+      set((s) => ({
+        tasks: s.tasks.map((t) =>
+          t.id === id ? (res.task as Task) : t
+        )
+      }));
+    }
+    return { hasData: res.hasData };
   },
 
   selectTask: (id) => set({ selectedTaskId: id }),

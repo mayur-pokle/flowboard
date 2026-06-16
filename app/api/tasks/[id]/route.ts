@@ -31,6 +31,9 @@ export const PATCH = withAuth(async (_user, req, ctx: { params: { id: string } }
     if (typeof body.contentStatus === "string")
       updates.contentStatus = body.contentStatus;
     if (Array.isArray(body.tags)) updates.tags = body.tags;
+    if (typeof body.publishedUrl === "string")
+      updates.publishedUrl = body.publishedUrl.trim() || null;
+    if (body.publishedUrl === null) updates.publishedUrl = null;
     if (body.content !== undefined) {
       // Push previous content (if any) into versions array.
       const prev = existing.content;

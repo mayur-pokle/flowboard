@@ -126,6 +126,17 @@ export const tasks = pgTable("tasks", {
   content: jsonb("content"),
   contentVersions: jsonb("contentVersions"),
   tags: text("tags").array().notNull().default([]),
+  // Once the article is live, the team fills in the URL here. Used to
+  // pull GSC performance data into the card so they can see how the
+  // piece is actually doing without leaving Flowboard.
+  publishedUrl: text("publishedUrl"),
+  // Cached snapshot of the last GSC performance fetch — current + prev
+  // 28d windows so we can render deltas instantly. Refreshed on demand
+  // by the user clicking "Refresh data" on the card. Shape:
+  //   { current: {impressions, clicks, ctr, position},
+  //     previous: {impressions, clicks, ctr, position},
+  //     fetchedAt: ISO string }
+  publishedUrlMetrics: jsonb("publishedUrlMetrics"),
   createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
   updatedAt: timestamp("updatedAt", { mode: "date" }).defaultNow().notNull(),
   // No FK — see note on topics.createdByUserId.

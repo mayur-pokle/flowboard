@@ -55,6 +55,24 @@ export interface GeneratedContent {
 
 export type ContentStatus = "not_started" | "generating" | "completed" | "error";
 
+// One window of GSC performance for a single URL.
+export interface UrlPerformanceWindow {
+  impressions: number;
+  clicks: number;
+  ctr: number;
+  position: number;
+}
+
+// Cached payload stored on a task's publishedUrlMetrics field.
+export interface UrlPerformance {
+  current: UrlPerformanceWindow;
+  previous: UrlPerformanceWindow;
+  fetchedAt: string;
+  // The URL that was actually queried — kept so we can detect when the
+  // publishedUrl changes vs the cached payload.
+  url: string;
+}
+
 export interface Task {
   id: string;
   topicId: string;
@@ -64,6 +82,8 @@ export interface Task {
   contentStatus: ContentStatus;
   content?: GeneratedContent;
   contentVersions?: GeneratedContent[];
+  publishedUrl?: string;
+  publishedUrlMetrics?: UrlPerformance;
   createdAt: string;
   updatedAt: string;
 }

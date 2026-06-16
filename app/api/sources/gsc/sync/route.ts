@@ -73,7 +73,14 @@ export const POST = withAuth(async (_user, req) => {
       reason: string;
       dedupKey: string;
     };
-    const ops: Opp[] = [];
+    // GSC's `dimensions: ["query", "page"]` returns one row per (query,
+    // page) pair — the same query showing on two different pages comes
+    // back as two rows. Our dedupKey only includes the query, so we
+    // first dedupe by key, keeping the highest-impression row as the
+    // canonical entry. Without this, the bulk upsert hits Postgres's
+    // "ON CONFLICT DO UPDATE command cannot affect row a second time"
+    // error.
+    const byKey = new Map<string, Opp>();
     for (const r of rows) {
       if (r.impressions < MIN_IMPRESSIONS) continue;
       if (r.ctr > MAX_CTR_FOR_OPPORTUNITY) continue;
@@ -102,8 +109,15 @@ export const POST = withAuth(async (_user, req) => {
         `${r.impressions.toLocaleString()} impressions @ pos ${r.position.toFixed(1)} · ` +
         `${(r.ctr * 100).toFixed(1)}% CTR`;
 
-      ops.push({
-        id: uid("disc"),
+      const dedupKey = `gsc::${siteUrl}::${r.query.toLowerCase()}`;
+      const existing = byKey.get(dedupKey);
+      // Keep the row with the higher impressions — that's the
+      // best-performing page for the query, the most useful URL to
+      // surface as the example link.
+      if (existing && existing.metrics.impressions >= r.impressions) continue;
+
+      byKey.set(dedupKey, {
+        id: existing?.id || uid("disc"),
         source: "gsc",
         query: r.query,
         url: r.page || null,
@@ -115,14 +129,17 @@ export const POST = withAuth(async (_user, req) => {
         },
         score,
         reason,
-        dedupKey: `gsc::${siteUrl}::${r.query.toLowerCase()}`
+        dedupKey
       });
     }
+    const ops: Opp[] = Array.from(byKey.values());
 
-    // Upsert in chunks. We update score/metrics on every sync so the
-    // user sees fresh data.
+    // Upsert: insert anything new (skip dups via onConflictDoNothing),
+    // then refresh metrics on every row in a separate UPDATE pass. We
+    // can't use a single ON CONFLICT DO UPDATE because Drizzle's `set`
+    // values are static per-call (they apply the FIRST row's values to
+    // every conflicting row, not the row-specific values).
     const CHUNK = 100;
-    let upserts = 0;
     for (let i = 0; i < ops.length; i += CHUNK) {
       const slice = ops.slice(i, i + CHUNK);
       await db
@@ -140,26 +157,11 @@ export const POST = withAuth(async (_user, req) => {
             dedupKey: o.dedupKey
           }))
         )
-        .onConflictDoUpdate({
-          target: discoveredOpportunities.dedupKey,
-          set: {
-            metrics: slice[0].metrics, // placeholder, see note below
-            score: slice[0].score,
-            reason: slice[0].reason,
-            url: slice[0].url,
-            updatedAt: new Date()
-          }
-        });
-      // NB: Drizzle's onConflictDoUpdate set values are static per-call.
-      // For accurate per-row updates we redo individual upserts below.
-      upserts += slice.length;
+        .onConflictDoNothing();
     }
 
-    // Per-row accurate update — onConflictDoUpdate above used the first
-    // row's values for ALL rows in the chunk, which is wrong. Redo each
-    // row individually so metrics/score are correct.
-    // (Acceptable cost: typical site = a few hundred opportunities, not
-    // millions.)
+    // Per-row UPDATE so re-syncs refresh metrics + score on rows that
+    // already existed.
     for (const o of ops) {
       await db
         .update(discoveredOpportunities)
@@ -172,6 +174,7 @@ export const POST = withAuth(async (_user, req) => {
         })
         .where(eq(discoveredOpportunities.dedupKey, o.dedupKey));
     }
+    const upserts = ops.length;
 
     // Persist selected site + lastSyncedAt so subsequent syncs default to it.
     await db

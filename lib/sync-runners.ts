@@ -80,7 +80,7 @@ export async function syncGsc(): Promise<SyncResult> {
     );
     out.sampled = rows.length;
 
-    const ops: Array<{
+    type Op = {
       id: string;
       source: string;
       query: string;
@@ -89,7 +89,13 @@ export async function syncGsc(): Promise<SyncResult> {
       score: number;
       reason: string;
       dedupKey: string;
-    }> = [];
+    };
+
+    // GSC returns one row per (query, page). Dedupe by query so the
+    // bulk upsert doesn't trip Postgres's "ON CONFLICT DO UPDATE
+    // command cannot affect row a second time" error. Keep the
+    // highest-impression page as the canonical example URL.
+    const byKey = new Map<string, Op>();
 
     for (const r of rows) {
       if (r.impressions < GSC_MIN_IMPRESSIONS) continue;
@@ -111,8 +117,12 @@ export async function syncGsc(): Promise<SyncResult> {
       const ctrScore = Math.max(0, 20 * (1 - r.ctr / GSC_MAX_CTR));
       const score = Math.round(impressionScore + positionScore + ctrScore);
 
-      ops.push({
-        id: uid("disc"),
+      const dedupKey = `gsc::${meta.siteUrl}::${r.query.toLowerCase()}`;
+      const existing = byKey.get(dedupKey);
+      if (existing && existing.metrics.impressions >= r.impressions) continue;
+
+      byKey.set(dedupKey, {
+        id: existing?.id || uid("disc"),
         source: "gsc",
         query: r.query,
         url: r.page || null,
@@ -126,9 +136,10 @@ export async function syncGsc(): Promise<SyncResult> {
         reason:
           `${r.impressions.toLocaleString()} impressions @ pos ${r.position.toFixed(1)} · ` +
           `${(r.ctr * 100).toFixed(1)}% CTR`,
-        dedupKey: `gsc::${meta.siteUrl}::${r.query.toLowerCase()}`
+        dedupKey
       });
     }
+    const ops = Array.from(byKey.values());
 
     // Bulk insert + per-row metric refresh.
     const CHUNK = 100;

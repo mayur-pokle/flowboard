@@ -182,6 +182,17 @@ export interface Settings {
   seedKeywords: string; // comma-separated
   topicsToAvoid: string; // comma-separated
 
+  // ── Per-opportunity-type LLM mapping (Discovery content gen) ──
+  // Each type uses its own provider + strategist instructions. Defaults
+  // are New=OpenAI, Refresh=Anthropic, Community=Gemini, but the
+  // strategist can re-map.
+  newOppProvider: "openai" | "anthropic" | "gemini";
+  newOppInstructions: string;
+  refreshOppProvider: "openai" | "anthropic" | "gemini";
+  refreshOppInstructions: string;
+  communityOppProvider: "openai" | "anthropic" | "gemini";
+  communityOppInstructions: string;
+
   // Competitive intel
   competitors: Competitor[];
 }

@@ -1,15 +1,18 @@
-// ── Discovery palette / token helpers ────────────────────────────────
+// ── Discovery design tokens ──────────────────────────────────────────
 //
-// Centralizes the color logic that needs to be IDENTICAL across the
-// Opportunities Board, Brief, and Content screens. The big rule from
-// the spec: "purple ALWAYS means AEO/GEO signal", "score color always
+// Centralizes the colour logic that needs to be IDENTICAL across the
+// Kanban board, cards, detail panel, and brief/content views. The big
+// rule from the spec: "purple ALWAYS means AEO/GEO", "score always
 // signals urgency". Importing these helpers everywhere keeps the
 // through-line tight.
 
-import type { Intent } from "@/lib/opportunity-classifier";
+import type {
+  Intent,
+  OpportunityType,
+  Priority
+} from "@/lib/opportunity-classifier";
 
-// Score → traffic-light color. The score is the primary visual anchor
-// on the board card.
+// ── Score → traffic light ──
 export type ScoreTone = "high" | "mid" | "low";
 export function scoreTone(score: number): ScoreTone {
   if (score >= 75) return "high";
@@ -40,12 +43,15 @@ export const SCORE_TONE_CLASSES: Record<
   }
 };
 
-// Source pill — same colors everywhere.
+// ── Source pill ──
 export const SOURCE_LABEL: Record<string, string> = {
   gsc: "GSC",
   semrush: "SEMrush",
   ahrefs: "Ahrefs",
-  refresh: "Refresh"
+  refresh: "Refresh",
+  "ai-citations": "AI Citations",
+  sitemap: "Sitemap",
+  "competitor-sitemap": "Sitemap"
 };
 export const SOURCE_TONE: Record<
   string,
@@ -54,10 +60,13 @@ export const SOURCE_TONE: Record<
   gsc: "info",
   semrush: "warn",
   ahrefs: "success",
-  refresh: "danger"
+  refresh: "danger",
+  "ai-citations": "info",
+  sitemap: "neutral",
+  "competitor-sitemap": "neutral"
 };
 
-// Intent → label + tone.
+// ── Intent → label + tone ──
 export const INTENT_LABEL: Record<Intent, string> = {
   commercial: "Commercial",
   informational: "Informational",
@@ -75,45 +84,47 @@ export const INTENT_BADGE_CLASS: Record<Intent, string> = {
     "bg-ink-100 text-ink-700 ring-1 ring-inset ring-ink-200"
 };
 
-// The AEO/GEO badge — purple, ALWAYS. Used on the board card, the
-// brief's "AI citation angle" box, and the content screen's quality
-// signal. Anchored to the V2 brand purple so it stays distinctive.
+// ── Opportunity type → badge ──
+export const TYPE_LABEL: Record<OpportunityType, string> = {
+  new: "New",
+  refresh: "Refresh",
+  community: "Community"
+};
+export const TYPE_BADGE_CLASS: Record<OpportunityType, string> = {
+  new: "bg-sky-50 text-sky-700 ring-1 ring-inset ring-sky-200",
+  refresh: "bg-amber-50 text-amber-800 ring-1 ring-inset ring-amber-200",
+  community: "bg-[#F5F5FE] text-[#4A4DC9] ring-1 ring-inset ring-[#D5D6FF]"
+};
+
+// ── Priority tag ──
+export const PRIORITY_LABEL: Record<Priority, string> = {
+  P0: "P0",
+  P1: "P1",
+  P2: "P2"
+};
+export const PRIORITY_BADGE_CLASS: Record<Priority, string> = {
+  P0: "bg-rose-50 text-rose-700 ring-1 ring-inset ring-rose-200",
+  P1: "bg-amber-50 text-amber-800 ring-1 ring-inset ring-amber-200",
+  P2: "bg-ink-100 text-ink-700 ring-1 ring-inset ring-ink-200"
+};
+
+// ── AEO/GEO purple (consistent everywhere) ──
 export const AI_CITATION_BADGE_CLASS =
   "bg-[#EEEEFD] text-[#4A4DC9] ring-1 ring-inset ring-[#D5D6FF]";
 export const AI_CITATION_BOX_CLASS =
   "bg-[#F5F5FE] text-[#4A4DC9] ring-1 ring-inset ring-[#D5D6FF]";
 
-// Status pill — drives the inline dropdown on the board.
-export const STATUS_LABEL: Record<string, string> = {
-  new: "New",
-  triaging: "Triaging",
-  briefed: "Briefed",
-  in_progress: "In progress",
-  published: "Published",
-  archived: "Archived",
-  // legacy
-  moved: "Moved to Kanban",
-  dismissed: "Dismissed"
-};
-export const STATUS_TONE: Record<
-  string,
-  "neutral" | "info" | "success" | "warn" | "danger"
-> = {
-  new: "info",
-  triaging: "warn",
-  briefed: "warn",
-  in_progress: "info",
-  published: "success",
-  archived: "neutral",
-  moved: "success",
-  dismissed: "neutral"
-};
+// ── Trending signal (amber, energetic) ──
+export const TRENDING_BADGE_CLASS =
+  "bg-amber-50 text-amber-800 ring-1 ring-inset ring-amber-200";
 
-export const STATUS_OPTIONS: Array<{ value: string; label: string }> = [
-  { value: "new", label: "New" },
-  { value: "triaging", label: "Triaging" },
-  { value: "briefed", label: "Briefed" },
-  { value: "in_progress", label: "In progress" },
-  { value: "published", label: "Published" },
-  { value: "archived", label: "Archived" }
-];
+// ── Kanban column labels ──
+export const COLUMN_LABEL: Record<string, string> = {
+  intake: "Intake",
+  new: "New",
+  in_progress: "In progress",
+  done: "Done",
+  rejected: "Rejected"
+};
+export const COLUMN_ORDER = ["intake", "new", "in_progress", "done"] as const;
+export type KanbanColumn = (typeof COLUMN_ORDER)[number];

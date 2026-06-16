@@ -10,7 +10,10 @@ import {
   ExternalLink,
   Globe,
   Unplug,
-  ArrowUpCircle
+  ArrowUpCircle,
+  Sparkles,
+  Map as MapIcon,
+  Save
 } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/Button";
@@ -20,7 +23,18 @@ import { toast } from "@/components/Toast";
 interface SourceRow {
   name: string;
   status: "connected" | "disconnected" | "error";
-  metadata: { email?: string; siteUrl?: string } | null;
+  metadata: {
+    email?: string;
+    siteUrl?: string;
+    // AI citations
+    prompts?: string[];
+    competitorDomains?: string[];
+    brandTerms?: string[];
+    mode?: "live" | "mock";
+    // Sitemaps
+    sitemapUrls?: string[];
+    schedule?: string;
+  } | null;
   lastError: string | null;
   lastSyncedAt: string | null;
   connectedAt: string | null;
@@ -344,6 +358,18 @@ export default function SourcesSettingsPage() {
               }}
               onRefresh={refresh}
             />
+
+            {/* AI Citations Tracker */}
+            <AiCitationsCard
+              row={data?.sources.find((s) => s.name === "ai-citations")}
+              onRefresh={refresh}
+            />
+
+            {/* Competitor Sitemaps */}
+            <CompetitorSitemapsCard
+              row={data?.sources.find((s) => s.name === "competitor-sitemap")}
+              onRefresh={refresh}
+            />
           </>
         )}
       </div>
@@ -645,6 +671,296 @@ function KeyAuthSourceCard({
           </div>
         </>
       )}
+    </SourceCard>
+  );
+}
+
+// ── AI Citations Tracker ──────────────────────────────────────────────
+// Mock-first by default. Captures prompts to monitor, competitor
+// domains to watch, brand terms to look for, and an optional API key.
+// Without a key, runs in mock mode against synthetic citation data.
+
+function AiCitationsCard({
+  row,
+  onRefresh
+}: {
+  row?: SourceRow;
+  onRefresh: () => void;
+}) {
+  const status = row?.status || "disconnected";
+  const meta = row?.metadata || {};
+  const [prompts, setPrompts] = useState(
+    (meta.prompts || []).join("\n")
+  );
+  const [competitorDomains, setCompetitorDomains] = useState(
+    (meta.competitorDomains || []).join(", ")
+  );
+  const [brandTerms, setBrandTerms] = useState(
+    (meta.brandTerms || []).join(", ")
+  );
+  const [apiKey, setApiKey] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+
+  useEffect(() => {
+    setPrompts((row?.metadata?.prompts || []).join("\n"));
+    setCompetitorDomains(
+      (row?.metadata?.competitorDomains || []).join(", ")
+    );
+    setBrandTerms((row?.metadata?.brandTerms || []).join(", "));
+  }, [row?.metadata]);
+
+  async function save() {
+    setSaving(true);
+    try {
+      const body = {
+        prompts: prompts.split("\n").map((s) => s.trim()).filter(Boolean),
+        competitorDomains: competitorDomains
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean),
+        brandTerms: brandTerms
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean),
+        apiKey: apiKey || undefined
+      };
+      const res = await fetch("/api/sources/ai-citations/connect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Save failed");
+      toast(
+        json.mode === "live"
+          ? "Connected (live mode)"
+          : "Saved (mock mode — add an API key for live citation checks)",
+        "success"
+      );
+      setApiKey("");
+      onRefresh();
+    } catch (err) {
+      toast((err as Error).message, "error");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function sync() {
+    setSyncing(true);
+    try {
+      const res = await fetch("/api/sources/ai-citations/sync", {
+        method: "POST"
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Sync failed");
+      toast(
+        `Sync complete · ${json.opportunities} opportunities · mode: ${json.mode}`,
+        "success"
+      );
+      onRefresh();
+    } catch (err) {
+      toast((err as Error).message, "error");
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  return (
+    <SourceCard
+      icon={<Sparkles className="size-5 text-[#4A4DC9]" />}
+      title="AI Citations Tracker"
+      description="Tracks whether AI engines (Perplexity, ChatGPT, Google AI Overviews) cite competitors but not your brand for prompts you care about. Defaults to mock mode — add an API key for live checks."
+      status={status}
+      lastError={row?.lastError}
+      lastSyncedAt={row?.lastSyncedAt}
+    >
+      <div className="space-y-3">
+        <div>
+          <label className="text-xs font-medium text-ink-700 mb-1 block">
+            Prompts to monitor (one per line)
+          </label>
+          <textarea
+            value={prompts}
+            onChange={(e) => setPrompts(e.target.value)}
+            placeholder={"What is runway in startups?\nBest cash flow forecasting software\nStripe vs Chargebee for SaaS"}
+            rows={4}
+            className="input !text-xs leading-relaxed font-mono min-h-[96px]"
+          />
+        </div>
+        <div className="grid sm:grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs font-medium text-ink-700 mb-1 block">
+              Competitor domains (comma-separated)
+            </label>
+            <input
+              type="text"
+              value={competitorDomains}
+              onChange={(e) => setCompetitorDomains(e.target.value)}
+              placeholder="competitor-a.com, competitor-b.com"
+              className="input !text-xs"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-ink-700 mb-1 block">
+              Brand terms (comma-separated)
+            </label>
+            <input
+              type="text"
+              value={brandTerms}
+              onChange={(e) => setBrandTerms(e.target.value)}
+              placeholder="My Company, mycompany.com, MyProduct"
+              className="input !text-xs"
+            />
+          </div>
+        </div>
+        <div>
+          <label className="text-xs font-medium text-ink-700 mb-1 block">
+            Provider API key{" "}
+            <span className="text-ink-400 font-normal">
+              (optional — leave blank for mock mode)
+            </span>
+          </label>
+          <input
+            type="password"
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+            placeholder="sk-…"
+            className="input !text-xs font-mono"
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <Button variant="primary" onClick={save} loading={saving}>
+            <Save className="size-4" />
+            Save
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={sync}
+            loading={syncing}
+            disabled={status !== "connected"}
+          >
+            <RefreshCw className="size-4" />
+            Sync now
+          </Button>
+          <span className="text-[11px] text-ink-500 ml-2">
+            Mode:{" "}
+            <strong>
+              {meta.mode === "live" ? "Live" : "Mock"}
+            </strong>
+          </span>
+        </div>
+      </div>
+    </SourceCard>
+  );
+}
+
+// ── Competitor Sitemaps ──────────────────────────────────────────────
+// One textarea of sitemap URLs. Weekly cron will fetch + parse.
+
+function CompetitorSitemapsCard({
+  row,
+  onRefresh
+}: {
+  row?: SourceRow;
+  onRefresh: () => void;
+}) {
+  const status = row?.status || "disconnected";
+  const meta = row?.metadata || {};
+  const [sitemapUrls, setSitemapUrls] = useState(
+    (meta.sitemapUrls || []).join("\n")
+  );
+  const [saving, setSaving] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+
+  useEffect(() => {
+    setSitemapUrls((row?.metadata?.sitemapUrls || []).join("\n"));
+  }, [row?.metadata]);
+
+  async function save() {
+    setSaving(true);
+    try {
+      const body = {
+        sitemapUrls: sitemapUrls
+          .split("\n")
+          .map((s) => s.trim())
+          .filter(Boolean)
+      };
+      const res = await fetch("/api/sources/competitor-sitemaps/connect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Save failed");
+      toast(`Saved · ${json.count} sitemap${json.count === 1 ? "" : "s"}`, "success");
+      onRefresh();
+    } catch (err) {
+      toast((err as Error).message, "error");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function sync() {
+    setSyncing(true);
+    try {
+      const res = await fetch("/api/sources/competitor-sitemaps/sync", {
+        method: "POST"
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Sync failed");
+      toast(
+        `Sync complete · ${json.opportunities} opportunities from ${json.sampled} URLs`,
+        "success"
+      );
+      onRefresh();
+    } catch (err) {
+      toast((err as Error).message, "error");
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  return (
+    <SourceCard
+      icon={<MapIcon className="size-5 text-ink-700" />}
+      title="Competitor Sitemaps"
+      description="Polls competitor sitemaps weekly to surface new content as Community opportunities. Standard XML sitemap format, one URL per line."
+      status={status}
+      lastError={row?.lastError}
+      lastSyncedAt={row?.lastSyncedAt}
+    >
+      <div className="space-y-3">
+        <div>
+          <label className="text-xs font-medium text-ink-700 mb-1 block">
+            Sitemap URLs (one per line)
+          </label>
+          <textarea
+            value={sitemapUrls}
+            onChange={(e) => setSitemapUrls(e.target.value)}
+            placeholder={"https://competitor-a.com/sitemap.xml\nhttps://competitor-b.com/sitemap_index.xml"}
+            rows={4}
+            className="input !text-xs leading-relaxed font-mono min-h-[96px]"
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <Button variant="primary" onClick={save} loading={saving}>
+            <Save className="size-4" />
+            Save
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={sync}
+            loading={syncing}
+            disabled={status !== "connected"}
+          >
+            <RefreshCw className="size-4" />
+            Sync now
+          </Button>
+        </div>
+      </div>
     </SourceCard>
   );
 }

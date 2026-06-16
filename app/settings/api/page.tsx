@@ -157,6 +157,24 @@ export default function SettingsApiPage() {
   const [seedKeywords, setSeedKeywords] = useState("");
   const [topicsToAvoid, setTopicsToAvoid] = useState("");
 
+  // Per-opportunity-type LLM mapping (Discovery content gen)
+  const [newOppProvider, setNewOppProvider] = useState<
+    "openai" | "anthropic" | "gemini"
+  >("openai");
+  const [newOppInstructions, setNewOppInstructions] = useState("");
+  const [refreshOppProvider, setRefreshOppProvider] = useState<
+    "openai" | "anthropic" | "gemini"
+  >("anthropic");
+  const [refreshOppInstructions, setRefreshOppInstructions] = useState("");
+  const [communityOppProvider, setCommunityOppProvider] = useState<
+    "openai" | "anthropic" | "gemini"
+  >("gemini");
+  const [communityOppInstructions, setCommunityOppInstructions] =
+    useState("");
+  const [savingPerTypeNew, setSavingPerTypeNew] = useState(false);
+  const [savingPerTypeRefresh, setSavingPerTypeRefresh] = useState(false);
+  const [savingPerTypeCommunity, setSavingPerTypeCommunity] = useState(false);
+
   const [testingSlack, setTestingSlack] = useState(false);
 
   // Competitor "add new" form
@@ -184,8 +202,68 @@ export default function SettingsApiPage() {
     setPrimaryGeo(settings.primaryGeo);
     setSeedKeywords(settings.seedKeywords);
     setTopicsToAvoid(settings.topicsToAvoid);
+    setNewOppProvider(settings.newOppProvider || "openai");
+    setNewOppInstructions(settings.newOppInstructions || "");
+    setRefreshOppProvider(settings.refreshOppProvider || "anthropic");
+    setRefreshOppInstructions(settings.refreshOppInstructions || "");
+    setCommunityOppProvider(settings.communityOppProvider || "gemini");
+    setCommunityOppInstructions(settings.communityOppInstructions || "");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hydrated]);
+
+  // Save handlers — one per opportunity type so the strategist can
+  // tune one workflow without committing the others.
+  async function savePerTypeNew() {
+    setSavingPerTypeNew(true);
+    try {
+      await updateSettings({
+        newOppProvider,
+        newOppInstructions
+      });
+      toast("New-opportunity content config saved", "success");
+    } catch (err) {
+      toast((err as Error).message, "error");
+    } finally {
+      setSavingPerTypeNew(false);
+    }
+  }
+  async function savePerTypeRefresh() {
+    setSavingPerTypeRefresh(true);
+    try {
+      await updateSettings({
+        refreshOppProvider,
+        refreshOppInstructions
+      });
+      toast("Refresh-opportunity content config saved", "success");
+    } catch (err) {
+      toast((err as Error).message, "error");
+    } finally {
+      setSavingPerTypeRefresh(false);
+    }
+  }
+  async function savePerTypeCommunity() {
+    setSavingPerTypeCommunity(true);
+    try {
+      await updateSettings({
+        communityOppProvider,
+        communityOppInstructions
+      });
+      toast("Community-opportunity content config saved", "success");
+    } catch (err) {
+      toast((err as Error).message, "error");
+    } finally {
+      setSavingPerTypeCommunity(false);
+    }
+  }
+  const perTypeNewDirty =
+    newOppProvider !== (settings.newOppProvider || "openai") ||
+    newOppInstructions !== (settings.newOppInstructions || "");
+  const perTypeRefreshDirty =
+    refreshOppProvider !== (settings.refreshOppProvider || "anthropic") ||
+    refreshOppInstructions !== (settings.refreshOppInstructions || "");
+  const perTypeCommunityDirty =
+    communityOppProvider !== (settings.communityOppProvider || "gemini") ||
+    communityOppInstructions !== (settings.communityOppInstructions || "");
 
   // ── Per-section save handlers ───────────────────────────────────
   // Each section that has multiple text inputs gets its own Save button so
@@ -848,6 +926,52 @@ export default function SettingsApiPage() {
           </div>
         </Card>
 
+        {/* ───────── Content generation by opportunity type ───────── */}
+        <Card
+          icon={Sparkles}
+          title="Content generation by opportunity type"
+          description="Each Discovery opportunity type uses its own LLM and instructions. Falls back to other configured providers if the chosen one is unavailable."
+        >
+          <div className="grid gap-4 lg:grid-cols-3">
+            <PerTypeContentBlock
+              label="New opportunities"
+              subtitle="Default: OpenAI"
+              provider={newOppProvider}
+              setProvider={setNewOppProvider}
+              instructions={newOppInstructions}
+              setInstructions={setNewOppInstructions}
+              onSave={savePerTypeNew}
+              saving={savingPerTypeNew}
+              dirty={perTypeNewDirty}
+              placeholder="Voice + structural guidance for fresh-keyword articles. e.g. 'Lead with a direct answer; include a customer outcome stat in the first 200 words.'"
+            />
+            <PerTypeContentBlock
+              label="Refresh opportunities"
+              subtitle="Default: Anthropic"
+              provider={refreshOppProvider}
+              setProvider={setRefreshOppProvider}
+              instructions={refreshOppInstructions}
+              setInstructions={setRefreshOppInstructions}
+              onSave={savePerTypeRefresh}
+              saving={savingPerTypeRefresh}
+              dirty={perTypeRefreshDirty}
+              placeholder="Guidance for refreshing existing articles. e.g. 'Preserve the URL structure; add a 2026 benchmark section at the top.'"
+            />
+            <PerTypeContentBlock
+              label="Community opportunities"
+              subtitle="Default: Gemini"
+              provider={communityOppProvider}
+              setProvider={setCommunityOppProvider}
+              instructions={communityOppInstructions}
+              setInstructions={setCommunityOppInstructions}
+              onSave={savePerTypeCommunity}
+              saving={savingPerTypeCommunity}
+              dirty={perTypeCommunityDirty}
+              placeholder="Guidance for AI-citation-gap content. e.g. 'Conversational tone, explicit comparison tables, numerical claims throughout.'"
+            />
+          </div>
+        </Card>
+
         {/* ───────────── Slack + Server defaults side-by-side ───────────── */}
         <div className="grid lg:grid-cols-2 gap-4 mb-4">
           <Card
@@ -1290,4 +1414,75 @@ function computeCompleteness(p: {
   ];
   const score = checks.filter(Boolean).length / checks.length;
   return Math.round(score * 100);
+}
+
+// ── Per-opportunity-type content block ──
+// One column of the 3-up grid. Provider dropdown + instructions
+// textarea + per-block Save button.
+function PerTypeContentBlock({
+  label,
+  subtitle,
+  provider,
+  setProvider,
+  instructions,
+  setInstructions,
+  onSave,
+  saving,
+  dirty,
+  placeholder
+}: {
+  label: string;
+  subtitle: string;
+  provider: "openai" | "anthropic" | "gemini";
+  setProvider: (v: "openai" | "anthropic" | "gemini") => void;
+  instructions: string;
+  setInstructions: (v: string) => void;
+  onSave: () => void;
+  saving: boolean;
+  dirty: boolean;
+  placeholder: string;
+}) {
+  return (
+    <div className="rounded-md border border-ink-200 bg-ink-50/40 p-3 flex flex-col">
+      <div className="mb-2">
+        <div className="text-xs font-semibold text-ink-900">{label}</div>
+        <div className="text-[10px] text-ink-500">{subtitle}</div>
+      </div>
+      <label className="text-[10px] uppercase tracking-wider text-ink-500 mb-1">
+        Provider
+      </label>
+      <select
+        value={provider}
+        onChange={(e) =>
+          setProvider(e.target.value as "openai" | "anthropic" | "gemini")
+        }
+        className="input !py-2 !text-xs mb-3"
+      >
+        <option value="openai">OpenAI</option>
+        <option value="anthropic">Anthropic</option>
+        <option value="gemini">Gemini</option>
+      </select>
+      <label className="text-[10px] uppercase tracking-wider text-ink-500 mb-1">
+        Instructions
+      </label>
+      <textarea
+        value={instructions}
+        onChange={(e) => setInstructions(e.target.value)}
+        placeholder={placeholder}
+        rows={5}
+        className="input !text-xs leading-relaxed font-normal flex-1 min-h-[120px]"
+      />
+      <div className="mt-3 flex justify-end">
+        <Button
+          variant="primary"
+          onClick={onSave}
+          disabled={!dirty || saving}
+          loading={saving}
+        >
+          <Save className="size-3.5" />
+          Save
+        </Button>
+      </div>
+    </div>
+  );
 }

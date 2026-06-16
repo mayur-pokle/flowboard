@@ -166,6 +166,25 @@ export const settings = pgTable("settings", {
   // "auto" tries OpenAI → Gemini → Anthropic. Pinned values use that
   // provider only (no fallback). Mock is the final fallback.
   primaryProvider: text("primaryProvider").default("auto").notNull(),
+  // ── Per opportunity-type LLM mapping (Discovery content gen) ──
+  // Each opportunity type uses its own provider + instructions. The
+  // spec defaults to New→OpenAI / Refresh→Anthropic / Community→Gemini
+  // but the strategist can re-map. Empty instructions = use brand
+  // voice + product context only.
+  newOppProvider: text("newOppProvider").default("openai").notNull(),
+  newOppInstructions: text("newOppInstructions").default("").notNull(),
+  refreshOppProvider: text("refreshOppProvider")
+    .default("anthropic")
+    .notNull(),
+  refreshOppInstructions: text("refreshOppInstructions")
+    .default("")
+    .notNull(),
+  communityOppProvider: text("communityOppProvider")
+    .default("gemini")
+    .notNull(),
+  communityOppInstructions: text("communityOppInstructions")
+    .default("")
+    .notNull(),
   lastGeneratedAt: timestamp("lastGeneratedAt", { mode: "date" }),
   updatedAt: timestamp("updatedAt", { mode: "date" }).defaultNow().notNull()
 });
@@ -325,6 +344,46 @@ export const discoveredOpportunities = pgTable("discoveredOpportunities", {
   // Generate Content success). Lets the UI deep-link from a card to its
   // task and back.
   linkedTaskId: text("linkedTaskId"),
+  // ── Demand-capture pipeline (Discovery kanban) ──
+  // Which column the card is in.
+  // "intake" → just discovered, waiting on accept/reject
+  // "new" → accepted, brief generating/generated
+  // "in_progress" → content generating/generated
+  // "done" → reviewed, archived
+  // "rejected" → soft-deleted (recoverable in session, permanent after)
+  kanbanColumn: text("kanbanColumn").default("intake").notNull(),
+  // What kind of opportunity this is. Drives which LLM + instructions
+  // are used for content generation.
+  // "new" → first-time keyword target (GSC/SEMrush/Ahrefs gaps)
+  // "refresh" → existing page losing ground (refresh detector)
+  // "community" → AI-citation gap or competitor velocity signal
+  opportunityType: text("opportunityType").default("new").notNull(),
+  // P0/P1/P2 — derived from total score on save.
+  priority: text("priority").default("P1").notNull(),
+  // Trending = week-over-week impression growth > 20%. Computed during
+  // GSC sync; static for sample/non-GSC sources.
+  trending: boolean("trending").default(false).notNull(),
+  weeklyImpressions: integer("weeklyImpressions").default(0).notNull(),
+  previousWeekImpressions: integer("previousWeekImpressions")
+    .default(0)
+    .notNull(),
+  // Competitors ranking for this query (used in brief gap analysis).
+  competitorUrls: jsonb("competitorUrls"),
+  // 0-100 — averaged across SEMrush + Ahrefs gap data when available.
+  competitorGapScore: integer("competitorGapScore").default(0).notNull(),
+  // Domains the AI Citations Tracker has seen cited for this query.
+  aiCitationsCited: jsonb("aiCitationsCited"),
+  // Existing pages we detect cannibalizing this query (URL + title).
+  cannibalizingPages: jsonb("cannibalizingPages"),
+  // Structured brief payload. Shape — see lib/brief-generator.ts
+  // BriefData type. Stored on save so re-opening is instant.
+  briefData: jsonb("briefData"),
+  // Quality checks from the content generation pipeline. Shape —
+  // see lib/content-quality.ts QualityChecks type.
+  contentChecks: jsonb("contentChecks"),
+  // Flagged when the row was inserted by the sample-data seeder.
+  // Shown in the dismissible "sample data mode" banner on the board.
+  isSample: boolean("isSample").default(false).notNull(),
   createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
   updatedAt: timestamp("updatedAt", { mode: "date" }).defaultNow().notNull()
 });

@@ -1,110 +1,235 @@
-// ── Content quality signals ──────────────────────────────────────────
+// ── Content quality checks ────────────────────────────────────────────
 //
-// Self-check that runs after AI generation. The Content screen renders
-// these as a "did the system catch itself" panel. Each signal is
-// independent — one amber doesn't fail the article, it just tells the
-// writer where to look.
+// Auto-verified after content generation. Each check is independent and
+// returns a status: "pass" | "warning" | "fail". The strategist sees
+// these as a panel — pass/warning/fail icons next to each criterion.
+// One amber doesn't block publishing; it just tells the writer where
+// to look.
 
-export interface QualitySignals {
-  directAnswer: boolean;
-  comparisonTable: boolean;
-  cannibalizationOk: boolean;
-  wordCount: number;
-  wordCountTarget: number;
+export type CheckStatus = "pass" | "warning" | "fail";
+
+export interface QualityCheck {
+  id: string;
+  label: string;
+  status: CheckStatus;
+  detail?: string;
 }
 
-// First paragraph (≥30 words AND contains the target keyword) = the
-// reader gets the answer immediately. This is the single biggest AEO
-// signal — AI engines and search engines reward direct-answer leads.
-export function checkDirectAnswer(
+export interface QualityChecks {
+  directAnswerInP1: QualityCheck;
+  comparisonTable: QualityCheck;
+  faqSection: QualityCheck;
+  cannibalizationAvoidance: QualityCheck;
+  wordCountInRange: QualityCheck;
+  // Convenience aggregate
+  overall: "pass" | "warning" | "fail";
+  wordCount: number;
+}
+
+// First paragraph contains the keyword AND is ≥30 words → strongest
+// AEO signal. We also check this in the first 150 words just in case
+// the writer led with a TL;DR block.
+function checkDirectAnswer(
   markdown: string,
   targetKeyword: string
-): boolean {
-  // Strip leading H1/quote/separator lines, find first content paragraph.
-  const lines = markdown.split("\n");
-  let para: string[] = [];
-  for (const raw of lines) {
-    const line = raw.trim();
-    if (line.startsWith("#") || line.startsWith(">") || line.startsWith("---")) {
-      // Heading/quote — skip if we haven't started a paragraph yet.
-      if (para.length === 0) continue;
-      // Otherwise, the paragraph ended.
-      break;
-    }
-    if (line === "") {
-      if (para.length > 0) break;
-      continue;
-    }
-    para.push(line);
-  }
-  if (para.length === 0) return false;
-  const text = para.join(" ");
-  const words = text.split(/\s+/).filter(Boolean).length;
-  if (words < 30) return false;
-  const haystack = text.toLowerCase();
+): QualityCheck {
+  const firstChunk = firstNWords(markdown, 150);
+  const haystack = firstChunk.toLowerCase();
   const needle = targetKeyword.toLowerCase().trim();
-  if (!needle) return words >= 30;
-  // Match either the full keyword or every multi-character token in it.
-  if (haystack.includes(needle)) return true;
-  const tokens = needle.split(/\s+/).filter((t) => t.length >= 3);
-  if (tokens.length === 0) return true;
-  return tokens.every((t) => haystack.includes(t));
-}
-
-// Markdown table detection: the divider row (`|---|---|`) is unique to
-// GFM tables and cheap to grep for.
-export function checkComparisonTable(markdown: string): boolean {
-  return /^\s*\|[-:\s|]+\|\s*$/m.test(markdown);
-}
-
-// Cannibalization: this article's H1 (or first heading line) shouldn't
-// exact-match an existing title in the library. We're lenient — only
-// flag near-exact dupes, because the brief already surfaced fuzzy
-// overlap warnings.
-export function checkCannibalizationOk(
-  markdown: string,
-  libraryTitles: string[]
-): boolean {
-  const firstHeading = markdown
-    .split("\n")
-    .find((l) => l.startsWith("# "))
-    ?.slice(2)
-    .trim();
-  if (!firstHeading) return true;
-  const norm = (s: string) =>
-    s.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
-  const target = norm(firstHeading);
-  for (const t of libraryTitles) {
-    if (norm(t) === target) return false;
+  if (firstChunk.split(/\s+/).filter(Boolean).length < 30) {
+    return {
+      id: "directAnswer",
+      label: "Direct answer in opening paragraph",
+      status: "fail",
+      detail: "Opening is too short to be a direct answer."
+    };
   }
-  return true;
+  if (!haystack.includes(needle)) {
+    const tokens = needle.split(/\s+/).filter((t) => t.length >= 3);
+    const all = tokens.length > 0 && tokens.every((t) => haystack.includes(t));
+    if (!all) {
+      return {
+        id: "directAnswer",
+        label: "Direct answer in opening paragraph",
+        status: "fail",
+        detail: "Target keyword not in the first 150 words."
+      };
+    }
+  }
+  return {
+    id: "directAnswer",
+    label: "Direct answer in opening paragraph",
+    status: "pass"
+  };
+}
+
+// GFM table divider row signals a markdown table.
+function checkComparisonTable(
+  markdown: string,
+  required: boolean
+): QualityCheck {
+  const present = /^\s*\|[-:\s|]+\|\s*$/m.test(markdown);
+  if (present) {
+    return {
+      id: "comparisonTable",
+      label: "Includes a comparison table",
+      status: "pass"
+    };
+  }
+  return {
+    id: "comparisonTable",
+    label: "Includes a comparison table",
+    status: required ? "fail" : "warning",
+    detail: required
+      ? "Commercial intent requires a comparison table."
+      : "Not required for this intent but tables boost AI citation odds."
+  };
+}
+
+// Heading: "## Frequently asked questions" or any "## ... FAQ ..."
+function checkFaqSection(markdown: string): QualityCheck {
+  const has = /^##\s+(frequently asked questions|faq)/im.test(markdown);
+  if (has) {
+    return {
+      id: "faqSection",
+      label: "FAQ section present",
+      status: "pass"
+    };
+  }
+  return {
+    id: "faqSection",
+    label: "FAQ section present",
+    status: "warning",
+    detail: "No FAQ section detected — AI engines reward structured Q&A."
+  };
+}
+
+// Cannibalization avoidance — the article must NOT mention the
+// cannibalizing page URLs or restate their distinct angle (we proxy
+// this by checking the article doesn't contain any of the URLs or
+// page titles verbatim).
+function checkCannibalizationAvoidance(
+  markdown: string,
+  cannibalizingPages: Array<{ url: string; title: string }>
+): QualityCheck {
+  if (cannibalizingPages.length === 0) {
+    return {
+      id: "cannibalization",
+      label: "Cannibalization respected",
+      status: "pass",
+      detail: "No overlapping pages to avoid."
+    };
+  }
+  const lower = markdown.toLowerCase();
+  const hits: string[] = [];
+  for (const p of cannibalizingPages) {
+    if (lower.includes(p.url.toLowerCase())) hits.push(p.url);
+    else if (lower.includes(p.title.toLowerCase())) hits.push(p.title);
+  }
+  if (hits.length === 0) {
+    return {
+      id: "cannibalization",
+      label: "Cannibalization respected",
+      status: "pass"
+    };
+  }
+  return {
+    id: "cannibalization",
+    label: "Cannibalization respected",
+    status: "fail",
+    detail: `Article references ${hits.length} cannibalizing source${hits.length > 1 ? "s" : ""}. Remove direct mentions.`
+  };
+}
+
+function checkWordCount(
+  markdown: string,
+  min: number,
+  max: number
+): QualityCheck {
+  const count = countWords(markdown);
+  if (count >= min && count <= max) {
+    return {
+      id: "wordCount",
+      label: `Word count ${count.toLocaleString()} (target ${min}–${max})`,
+      status: "pass"
+    };
+  }
+  if (count >= min * 0.8 && count <= max * 1.2) {
+    return {
+      id: "wordCount",
+      label: `Word count ${count.toLocaleString()} (target ${min}–${max})`,
+      status: "warning",
+      detail:
+        count < min
+          ? "Slightly under target — could add a worked example."
+          : "Slightly over target — tighten where possible."
+    };
+  }
+  return {
+    id: "wordCount",
+    label: `Word count ${count.toLocaleString()} (target ${min}–${max})`,
+    status: "fail",
+    detail:
+      count < min
+        ? "Significantly below target word count."
+        : "Significantly over target word count."
+  };
+}
+
+function firstNWords(s: string, n: number): string {
+  return s.split(/\s+/).filter(Boolean).slice(0, n).join(" ");
 }
 
 export function countWords(markdown: string): number {
-  // Strip markdown noise then count word-ish tokens.
   const stripped = markdown
-    .replace(/```[\s\S]*?```/g, " ") // code blocks
-    .replace(/`[^`]*`/g, " ") // inline code
-    .replace(/!\[[^\]]*\]\([^)]*\)/g, " ") // images
-    .replace(/\[[^\]]*\]\([^)]*\)/g, " ") // links
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/`[^`]*`/g, " ")
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, " ")
+    .replace(/\[[^\]]*\]\([^)]*\)/g, " ")
     .replace(/[#>*_~|`-]/g, " ");
   return stripped.split(/\s+/).filter(Boolean).length;
 }
 
-export function computeQualitySignals(opts: {
+export function runQualityChecks(opts: {
   markdown: string;
   targetKeyword: string;
-  wordCountTarget: number;
-  libraryTitles: string[];
-}): QualitySignals {
+  intent: string;
+  wordCountMin: number;
+  wordCountMax: number;
+  cannibalizingPages: Array<{ url: string; title: string }>;
+}): QualityChecks {
+  const directAnswerInP1 = checkDirectAnswer(opts.markdown, opts.targetKeyword);
+  const comparisonTable = checkComparisonTable(
+    opts.markdown,
+    opts.intent === "commercial"
+  );
+  const faqSection = checkFaqSection(opts.markdown);
+  const cannibalizationAvoidance = checkCannibalizationAvoidance(
+    opts.markdown,
+    opts.cannibalizingPages
+  );
+  const wordCountInRange = checkWordCount(
+    opts.markdown,
+    opts.wordCountMin,
+    opts.wordCountMax
+  );
+  const all = [
+    directAnswerInP1,
+    comparisonTable,
+    faqSection,
+    cannibalizationAvoidance,
+    wordCountInRange
+  ];
+  let overall: "pass" | "warning" | "fail" = "pass";
+  if (all.some((c) => c.status === "fail")) overall = "fail";
+  else if (all.some((c) => c.status === "warning")) overall = "warning";
   return {
-    directAnswer: checkDirectAnswer(opts.markdown, opts.targetKeyword),
-    comparisonTable: checkComparisonTable(opts.markdown),
-    cannibalizationOk: checkCannibalizationOk(
-      opts.markdown,
-      opts.libraryTitles
-    ),
-    wordCount: countWords(opts.markdown),
-    wordCountTarget: opts.wordCountTarget
+    directAnswerInP1,
+    comparisonTable,
+    faqSection,
+    cannibalizationAvoidance,
+    wordCountInRange,
+    overall,
+    wordCount: countWords(opts.markdown)
   };
 }

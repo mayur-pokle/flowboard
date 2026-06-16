@@ -1,308 +1,404 @@
 // ── Deterministic brief generator ────────────────────────────────────
 //
-// Assembles a writer-facing brief markdown from a discovered
-// opportunity's signals + workspace context. No LLM in this path
-// because briefs should be FAST and AUDITABLE: the strategist must
-// trust that the same opportunity always produces the same brief
-// unless the inputs change. AI is reserved for the article itself.
-//
-// Output is plain markdown. The Brief page renders it left-column;
-// warning boxes (cannibalization, AI citation angle) are derived
-// directly from opportunity fields on the page rather than baked into
-// the markdown — they need to be styled, dismissible, and clickable.
+// Pure data-assembly function. Speed + predictability matter more than
+// richness — the brief is a framework, not a finished document. Output
+// is BOTH a structured BriefData shape (stored on the opportunity for
+// programmatic access by content generation) AND a rendered markdown
+// preview for the writer to read on the brief page.
 
-import type { Intent, ScoreBreakdown } from "@/lib/opportunity-classifier";
+import type {
+  Intent,
+  ScoreBreakdown,
+  Priority,
+  OpportunityType
+} from "@/lib/opportunity-classifier";
+import { intentExplanation } from "@/lib/opportunity-classifier";
 
+export interface BriefData {
+  // ── Intent ──
+  intent: Intent;
+  intentExplanation: string;
+  // ── Format & scope ──
+  recommendedFormat: string; // "comparison guide" | "how-to" | "landing page" | "FAQ" | "listicle"
+  wordCountMin: number;
+  wordCountMax: number;
+  // ── Structure ──
+  h2Structure: string[]; // 5-7 substantive H2s
+  // ── Competitor gap analysis ──
+  topCompetitors: Array<{ domain: string; coverage: string }>;
+  competitorGaps: string[]; // angles the new piece should own
+  // ── AI citation angle (conditional) ──
+  aiCitationAngle?: {
+    competitorsCited: string[]; // domains
+    structuralAdvice: string[]; // bullets
+  };
+  // ── Cannibalization warning (conditional) ──
+  cannibalization?: {
+    overlappingPages: Array<{ url: string; title: string }>;
+    resolution: "differentiate" | "consolidate" | "canonical" | "redirect";
+    resolutionReason: string;
+  };
+  // ── CTA ──
+  ctaRecommendation: string;
+  // ── Bookkeeping ──
+  generatedAt: string;
+  opportunityType: OpportunityType;
+  priority: Priority;
+  scoreBreakdown: ScoreBreakdown;
+  totalScore: number;
+}
+
+// ── Format + word-count derivation ──
+function formatFor(intent: Intent, competitorGapScore: number): {
+  format: string;
+  wordCountMin: number;
+  wordCountMax: number;
+} {
+  if (intent === "transactional") {
+    return { format: "landing page", wordCountMin: 600, wordCountMax: 1000 };
+  }
+  if (intent === "commercial") {
+    // High gap → full comparison guide. Lower gap → focused buyer's brief.
+    if (competitorGapScore >= 60) {
+      return {
+        format: "comparison guide",
+        wordCountMin: 1800,
+        wordCountMax: 2400
+      };
+    }
+    return {
+      format: "buyer's guide",
+      wordCountMin: 1400,
+      wordCountMax: 1800
+    };
+  }
+  if (intent === "navigational") {
+    return { format: "brand page", wordCountMin: 800, wordCountMax: 1400 };
+  }
+  // Informational: question shape → FAQ-leaning, otherwise how-to.
+  return {
+    format: "how-to guide",
+    wordCountMin: 1500,
+    wordCountMax: 2000
+  };
+}
+
+// ── H2 structure ──
+// Substantive headings derived from intent + query + competitor URL slugs.
+function h2StructureFor(input: {
+  query: string;
+  intent: Intent;
+  competitorSlugs: string[];
+}): string[] {
+  const q = input.query;
+  const slugWords = new Set(
+    input.competitorSlugs
+      .flatMap((s) =>
+        s
+          .toLowerCase()
+          .replace(/^https?:\/\/[^/]+\//, "")
+          .replace(/\.[a-z]+$/, "")
+          .split(/[/\-_]+/)
+      )
+      .filter((w) => w.length > 3)
+  );
+
+  const cap = (s: string) =>
+    s.charAt(0).toUpperCase() + s.slice(1);
+
+  if (input.intent === "commercial") {
+    const out = [
+      `${cap(q)} at a glance`,
+      `How we evaluated`,
+      `Top options compared`,
+      `When to choose each`,
+      `Pricing and onboarding`,
+      `Our recommendation`,
+      `Frequently asked questions`
+    ];
+    return out.slice(0, 7);
+  }
+  if (input.intent === "transactional") {
+    return [
+      `What ${q} does in 60 seconds`,
+      `Who it's for`,
+      `How to get started`,
+      `Pricing and plans`,
+      `Frequently asked questions`
+    ];
+  }
+  if (input.intent === "navigational") {
+    return [
+      `${cap(q)} — the short answer`,
+      `Who uses it`,
+      `How it compares`,
+      `Customer outcomes`,
+      `Where to go next`
+    ];
+  }
+  // Informational
+  const base = [
+    `${cap(q)} — the short answer`,
+    `Why this matters now`,
+    `Step-by-step explanation`,
+    `Worked example`,
+    `Common mistakes to avoid`,
+    `Frequently asked questions`
+  ];
+  // If competitor slugs hint at "benchmarks", "metrics", "framework" — splice in.
+  if (slugWords.has("benchmark") || slugWords.has("benchmarks")) {
+    base.splice(3, 0, "Benchmark data by stage");
+  }
+  if (slugWords.has("template") || slugWords.has("templates")) {
+    base.splice(3, 0, "Templates you can copy");
+  }
+  return base.slice(0, 7);
+}
+
+// ── Competitor gap analysis ──
+// We don't have crawled content for competitor URLs — we infer
+// coverage + gaps from the URL slug pattern. This gives the writer a
+// directional read without requiring a crawl layer.
+function summarizeCompetitor(url: string): string {
+  const slug = url
+    .replace(/^https?:\/\/[^/]+\//, "")
+    .replace(/\.[a-z]+$/, "")
+    .replace(/[/_-]+/g, " ")
+    .trim();
+  if (!slug) return "Generic landing page";
+  return slug.charAt(0).toUpperCase() + slug.slice(1);
+}
+
+function gapAnglesFor(input: {
+  intent: Intent;
+  hasComparisonSlug: boolean;
+  aiCitationGap: boolean;
+}): string[] {
+  const gaps: string[] = [];
+  if (input.intent === "commercial") {
+    gaps.push(
+      "A side-by-side comparison table with specific numbers (most competitors use vague claims)."
+    );
+    gaps.push(
+      "A decision tree by use case — competitors lead with feature lists rather than situational fit."
+    );
+  }
+  if (input.intent === "informational") {
+    gaps.push(
+      "A direct, quotable answer in the opening paragraph — competitors meander before answering."
+    );
+    gaps.push(
+      "A worked numerical example — most competitors stop at definitions."
+    );
+  }
+  if (input.aiCitationGap) {
+    gaps.push(
+      "Structured headings that map to common follow-up questions so AI engines can extract sub-answers."
+    );
+  }
+  if (!input.hasComparisonSlug && input.intent !== "informational") {
+    gaps.push(
+      "A comparison angle — none of the top results have a head-to-head breakdown."
+    );
+  }
+  return gaps;
+}
+
+// ── AI citation structural advice ──
+function aiCitationStructuralAdvice(): string[] {
+  return [
+    "Lead with a direct, factual answer to the implied question in the first 2 paragraphs.",
+    "Include a structured comparison table — AI engines extract these into citations.",
+    "Cite specific quantified claims (numbers, dates, percentages) over generic phrasing.",
+    "Use heading hierarchy that maps to common follow-up questions — H2 = question, H3 = sub-question.",
+    "Add a clear summary or TL;DR block at the top — this is the chunk AI engines pull first."
+  ];
+}
+
+// ── CTA recommendation ──
+function ctaFor(intent: Intent, defaultCta?: string): string {
+  if (intent === "commercial") {
+    return defaultCta || "Book a demo to see how it compares.";
+  }
+  if (intent === "transactional") {
+    return defaultCta || "Start your free trial — no credit card required.";
+  }
+  if (intent === "navigational") {
+    return defaultCta || "See the product overview.";
+  }
+  return defaultCta || "Get the playbook by email.";
+}
+
+// ── Public assembly entrypoint ──
 export interface BriefInput {
   query: string;
-  source: string;
-  intent: Intent | null;
-  score: number;
-  scoreBreakdown: ScoreBreakdown | null;
+  intent: Intent;
+  opportunityType: OpportunityType;
+  priority: Priority;
+  scoreBreakdown: ScoreBreakdown;
+  totalScore: number;
   aiCitationGap: boolean;
-  metrics: Record<string, number | string | null | undefined> | null;
-  reason: string | null;
-  // Settings context
-  brand: {
-    companyName?: string;
-    brandNiche?: string;
-    brandAudience?: string;
-    brandVoice?: string;
-    primaryCta?: string;
-    valueProposition?: string;
+  competitorUrls: string[];
+  competitorGapScore: number;
+  aiCitationsCited: string[];
+  cannibalizingPages: Array<{ url: string; title: string }>;
+  brandPrimaryCta?: string;
+}
+
+export function buildBriefData(input: BriefInput): BriefData {
+  const fmt = formatFor(input.intent, input.competitorGapScore);
+  const h2s = h2StructureFor({
+    query: input.query,
+    intent: input.intent,
+    competitorSlugs: input.competitorUrls
+  });
+  const hasComparisonSlug = input.competitorUrls.some((u) =>
+    /vs|compare|comparison|alternative/i.test(u)
+  );
+  const gaps = gapAnglesFor({
+    intent: input.intent,
+    hasComparisonSlug,
+    aiCitationGap: input.aiCitationGap
+  });
+  const topCompetitors = input.competitorUrls.slice(0, 3).map((url) => ({
+    domain: url.replace(/^https?:\/\//, "").split("/")[0],
+    coverage: summarizeCompetitor(url)
+  }));
+
+  const data: BriefData = {
+    intent: input.intent,
+    intentExplanation: intentExplanation(input.intent),
+    recommendedFormat: fmt.format,
+    wordCountMin: fmt.wordCountMin,
+    wordCountMax: fmt.wordCountMax,
+    h2Structure: h2s,
+    topCompetitors,
+    competitorGaps: gaps,
+    ctaRecommendation: ctaFor(input.intent, input.brandPrimaryCta),
+    generatedAt: new Date().toISOString(),
+    opportunityType: input.opportunityType,
+    priority: input.priority,
+    scoreBreakdown: input.scoreBreakdown,
+    totalScore: input.totalScore
   };
-  competitors: Array<{ name: string; url: string; tier?: string }>;
-  // Top relevant pieces from the existing content library — used in the
-  // internal-linking section.
-  relatedExistingContent: Array<{
-    url: string;
-    title: string;
-    targetKeyword?: string;
-  }>;
-  // Library pieces that may cannibalize — same keyword/intent already
-  // published. Surfaced in the warning box at the top of the page.
-  cannibalizationMatches: Array<{
-    url: string;
-    title: string;
-    targetKeyword?: string;
-  }>;
+
+  if (input.aiCitationGap) {
+    data.aiCitationAngle = {
+      competitorsCited: input.aiCitationsCited,
+      structuralAdvice: aiCitationStructuralAdvice()
+    };
+  }
+  if (input.cannibalizingPages.length > 0) {
+    // Heuristic resolution: 1 overlap → differentiate, 2+ → consolidate.
+    const count = input.cannibalizingPages.length;
+    data.cannibalization = {
+      overlappingPages: input.cannibalizingPages,
+      resolution: count === 1 ? "differentiate" : "consolidate",
+      resolutionReason:
+        count === 1
+          ? "One existing page targets overlapping intent. Differentiate scope clearly (target a different sub-angle) before publishing."
+          : "Multiple existing pages compete for this intent. Consolidate them and update the strongest, redirect the weaker ones."
+    };
+  }
+
+  return data;
 }
 
-// Content type recommendation derived from intent. Strategist can
-// override on the Kanban card later.
-function contentTypeFor(intent: Intent | null): {
-  type: string;
-  shape: string;
-  wordCountTarget: number;
-} {
-  switch (intent) {
-    case "transactional":
-      return {
-        type: "Landing page / Tool",
-        shape: "Free tool, template, or calculator with a clear CTA",
-        wordCountTarget: 800
-      };
-    case "commercial":
-      return {
-        type: "Comparison / Buyer's guide",
-        shape:
-          "Comparison table + criteria-based recommendation + clear next-step CTA",
-        wordCountTarget: 2000
-      };
-    case "navigational":
-      return {
-        type: "Brand page",
-        shape: "Direct answer + product positioning + customer evidence",
-        wordCountTarget: 1200
-      };
-    case "informational":
-    default:
-      return {
-        type: "Guide / Explainer",
-        shape:
-          "Direct answer in first 2 paragraphs + structured how-to + examples",
-        wordCountTarget: 1800
-      };
-  }
-}
-
-// Outline templates per intent — these are starting points, the writer
-// reshapes them. They give the brief enough scaffolding to feel
-// useful, not so much that they constrain the writer.
-function outlineFor(query: string, intent: Intent | null): string[] {
-  switch (intent) {
-    case "transactional":
-      return [
-        `What ${query} solves (one-liner)`,
-        "How it works in 60 seconds",
-        "Step-by-step usage / inputs needed",
-        "Worked example",
-        "Common edge cases",
-        "Get started CTA"
-      ];
-    case "commercial":
-      return [
-        `Direct answer: the short version`,
-        "Evaluation criteria",
-        "Top contenders compared (table)",
-        "Honorable mentions",
-        "How to decide based on your situation",
-        "Recommendation + next step"
-      ];
-    case "navigational":
-      return [
-        `What ${query} is`,
-        "Who it's for",
-        "How it compares to alternatives",
-        "Customer outcomes",
-        "Where to go next"
-      ];
-    case "informational":
-    default:
-      return [
-        `Direct answer in 2 paragraphs (lead with the answer)`,
-        `Background: why ${query} matters`,
-        "Step-by-step explanation",
-        "Worked example",
-        "Common mistakes",
-        "Related concepts",
-        "FAQ / quick reference"
-      ];
-  }
-}
-
-// Format the metrics dict into a single-line summary the brief can
-// quote. Different sources contribute different fields.
-function metricsLine(
-  metrics: BriefInput["metrics"],
-  source: string
-): string {
-  if (!metrics) return "—";
-  const parts: string[] = [];
-  if (typeof metrics.impressions === "number") {
-    parts.push(`${metrics.impressions.toLocaleString()} impressions`);
-  }
-  if (typeof metrics.clicks === "number") {
-    parts.push(`${metrics.clicks.toLocaleString()} clicks`);
-  }
-  if (typeof metrics.ctr === "number") {
-    parts.push(`${(metrics.ctr * 100).toFixed(1)}% CTR`);
-  }
-  if (typeof metrics.position === "number") {
-    parts.push(`avg pos ${(metrics.position as number).toFixed(1)}`);
-  }
-  if (typeof metrics.volume === "number") {
-    parts.push(`${metrics.volume.toLocaleString()} vol/mo`);
-  }
-  if (typeof metrics.difficulty === "number") {
-    parts.push(`KD ${metrics.difficulty}`);
-  }
-  if (parts.length === 0) return source.toUpperCase();
-  return parts.join(" · ");
-}
-
-export function generateBriefMarkdown(input: BriefInput): string {
-  const ct = contentTypeFor(input.intent);
-  const outline = outlineFor(input.query, input.intent);
-  const brand = input.brand;
+// ── Markdown view of BriefData ──
+// Used by the brief page when rendering the structured data as a
+// reading document. The structured BriefData is the source of truth;
+// markdown is derived for display.
+export function renderBriefAsMarkdown(brief: BriefData, query: string): string {
   const lines: string[] = [];
-
-  // ── Title block ─────────────────────────────────────────────────
-  lines.push(`# Brief: ${input.query}`);
+  lines.push(`# Brief: ${query}`);
   lines.push("");
   lines.push(
-    `> **${ct.type}** · target keyword \`${input.query}\` · intent: **${input.intent || "informational"}** · target ~${ct.wordCountTarget} words`
+    `> **${brief.recommendedFormat}** · intent: **${brief.intent}** · ` +
+      `target ${brief.wordCountMin.toLocaleString()}–${brief.wordCountMax.toLocaleString()} words · ` +
+      `priority **${brief.priority}** · score **${brief.totalScore}/100**`
   );
   lines.push("");
 
-  // ── Strategic context ───────────────────────────────────────────
-  lines.push("## Why we're writing this");
-  if (input.reason) {
-    lines.push(input.reason);
-  }
-  const sb = input.scoreBreakdown;
-  if (sb) {
-    lines.push("");
-    lines.push(
-      `Score ${input.score}/100 = GSC velocity ${sb.gscVelocity} + ` +
-        `competitor gap ${sb.competitorGap} + AI citation gap ${sb.aiCitationGap} + ` +
-        `conversion fit ${sb.conversions}.`
-    );
-  }
-  lines.push("");
-  lines.push(`**Source signal:** ${metricsLine(input.metrics, input.source)}`);
+  lines.push("## Intent");
+  lines.push(brief.intentExplanation);
   lines.push("");
 
-  // ── Audience + voice ────────────────────────────────────────────
-  if (
-    brand.brandAudience ||
-    brand.brandVoice ||
-    brand.valueProposition
-  ) {
-    lines.push("## Audience + voice");
-    if (brand.brandAudience) lines.push(`**Reader:** ${brand.brandAudience}`);
-    if (brand.brandVoice) lines.push(`**Voice:** ${brand.brandVoice}`);
-    if (brand.valueProposition) {
-      lines.push(`**Our angle:** ${brand.valueProposition}`);
+  lines.push("## Format and scope");
+  lines.push(
+    `**${brief.recommendedFormat[0].toUpperCase() + brief.recommendedFormat.slice(1)}**, ` +
+      `${brief.wordCountMin.toLocaleString()}–${brief.wordCountMax.toLocaleString()} words.`
+  );
+  lines.push("");
+
+  lines.push("## Suggested article structure");
+  for (const h of brief.h2Structure) lines.push(`- ${h}`);
+  lines.push("");
+
+  if (brief.topCompetitors.length > 0) {
+    lines.push("## Competitor gap analysis");
+    lines.push("Top-ranking competitors cover:");
+    for (const c of brief.topCompetitors) {
+      lines.push(`- **${c.domain}** — ${c.coverage}`);
+    }
+    lines.push("");
+    if (brief.competitorGaps.length > 0) {
+      lines.push("What they miss (= what this piece should own):");
+      for (const g of brief.competitorGaps) lines.push(`- ${g}`);
+      lines.push("");
+    }
+  }
+
+  if (brief.aiCitationAngle) {
+    lines.push("## AI citation angle");
+    if (brief.aiCitationAngle.competitorsCited.length > 0) {
+      lines.push(
+        `AI engines (Perplexity, AI Overviews, ChatGPT) currently cite **${brief.aiCitationAngle.competitorsCited
+          .map((d) => `\`${d}\``)
+          .join(", ")}** for this query — your domain is not in the answer. To win the citation:`
+      );
+    } else {
+      lines.push(
+        "This query is the shape AI engines answer directly. To earn citations:"
+      );
+    }
+    for (const a of brief.aiCitationAngle.structuralAdvice) {
+      lines.push(`- ${a}`);
     }
     lines.push("");
   }
 
-  // ── Content shape ───────────────────────────────────────────────
-  lines.push("## Content shape");
-  lines.push(ct.shape);
-  lines.push("");
-  lines.push(
-    `**Word count target:** ~${ct.wordCountTarget} words (±15%).`
-  );
-  lines.push("");
-
-  // ── Outline ─────────────────────────────────────────────────────
-  lines.push("## Suggested outline");
-  for (const item of outline) {
-    lines.push(`- ${item}`);
-  }
-  lines.push("");
-
-  // ── AI citation angle (also in the purple box, but in-brief too
-  // so it survives copy-paste). ─────────────────────────────────
-  if (input.aiCitationGap) {
-    lines.push("## AI citation angle (AEO/GEO)");
-    lines.push(
-      "This query is the shape AI engines (Perplexity, AI Overviews, ChatGPT) tend to answer directly. To earn citations:"
-    );
-    lines.push(
-      "- **Lead with a direct answer in the first 2 paragraphs.** No throat-clearing intro."
-    );
-    lines.push(
-      "- **Add a short summary box** at the top with the headline answer in plain English."
-    );
-    lines.push(
-      "- **Cite specific numbers** — AI engines prefer sources with concrete data over generic claims."
-    );
-    lines.push(
-      "- **Use unambiguous H2s** that match likely follow-up questions."
-    );
-    lines.push("");
-  }
-
-  // ── Cannibalization callout ──────────────────────────────────────
-  if (input.cannibalizationMatches.length > 0) {
+  if (brief.cannibalization) {
     lines.push("## ⚠️ Cannibalization risk");
     lines.push(
-      "These existing pages already target overlapping intent. Either update them instead, or differentiate this piece clearly:"
+      `**Resolution: ${brief.cannibalization.resolution}.** ${brief.cannibalization.resolutionReason}`
     );
-    for (const c of input.cannibalizationMatches.slice(0, 5)) {
-      lines.push(`- [${c.title}](${c.url})${c.targetKeyword ? ` — \`${c.targetKeyword}\`` : ""}`);
+    lines.push("");
+    lines.push("Overlapping pages:");
+    for (const p of brief.cannibalization.overlappingPages) {
+      lines.push(`- [${p.title}](${p.url})`);
     }
     lines.push("");
   }
 
-  // ── Internal linking ─────────────────────────────────────────────
-  if (input.relatedExistingContent.length > 0) {
-    lines.push("## Internal links to weave in");
-    for (const c of input.relatedExistingContent.slice(0, 8)) {
-      lines.push(`- [${c.title}](${c.url})`);
-    }
-    lines.push("");
-  }
-
-  // ── Competitor reference ────────────────────────────────────────
-  if (input.competitors.length > 0) {
-    lines.push("## Competitor reference");
-    lines.push(
-      "Read these before drafting so you know what's already out there:"
-    );
-    for (const c of input.competitors.slice(0, 5)) {
-      lines.push(`- [${c.name || c.url}](${c.url})`);
-    }
-    lines.push("");
-  }
-
-  // ── CTA + brand ─────────────────────────────────────────────────
   lines.push("## CTA");
-  lines.push(brand.primaryCta || "Book a demo");
+  lines.push(brief.ctaRecommendation);
   lines.push("");
-  if (brand.brandNiche) {
-    lines.push(`*Brand context: ${brand.brandNiche}.*`);
-  }
 
   return lines.join("\n");
 }
 
-// Heuristic: find existingContent rows that could cannibalize this
-// query (same keyword OR title contains the query). Returns at most
-// `limit` matches sorted by overlap strength.
+// ── Cannibalization detection helper ──
+// Lightweight fuzzy match against existing library titles. Returns the
+// rows whose title overlaps strongly with the query.
 export function findCannibalizationMatches(
   query: string,
   library: Array<{ url: string; title: string; targetKeyword?: string }>,
   limit = 5
-): Array<{ url: string; title: string; targetKeyword?: string }> {
+): Array<{ url: string; title: string }> {
   const q = query.toLowerCase().trim();
   const tokens = q.split(/\s+/).filter((t) => t.length >= 3);
   if (tokens.length === 0) return [];
-
-  type Scored = { item: (typeof library)[number]; score: number };
+  type Scored = { item: { url: string; title: string }; score: number };
   const scored: Scored[] = [];
   for (const item of library) {
     const t = item.title.toLowerCase();
@@ -313,35 +409,8 @@ export function findCannibalizationMatches(
       if (t.includes(tok)) score += 1;
       if (k && k.includes(tok)) score += 1;
     }
-    if (score >= 3) scored.push({ item, score });
-  }
-  scored.sort((a, b) => b.score - a.score);
-  return scored.slice(0, limit).map((s) => s.item);
-}
-
-// Looser version of above — return RELATED (not cannibalizing) pieces
-// to suggest as internal links. Lower threshold + excludes the
-// cannibalizing matches.
-export function findRelatedContent(
-  query: string,
-  library: Array<{ url: string; title: string; targetKeyword?: string }>,
-  excludeUrls: Set<string>,
-  limit = 8
-): Array<{ url: string; title: string; targetKeyword?: string }> {
-  const q = query.toLowerCase().trim();
-  const tokens = q.split(/\s+/).filter((t) => t.length >= 3);
-  if (tokens.length === 0) return [];
-
-  type Scored = { item: (typeof library)[number]; score: number };
-  const scored: Scored[] = [];
-  for (const item of library) {
-    if (excludeUrls.has(item.url)) continue;
-    const t = item.title.toLowerCase();
-    let score = 0;
-    for (const tok of tokens) {
-      if (t.includes(tok)) score += 1;
-    }
-    if (score >= 1) scored.push({ item, score });
+    if (score >= 3)
+      scored.push({ item: { url: item.url, title: item.title }, score });
   }
   scored.sort((a, b) => b.score - a.score);
   return scored.slice(0, limit).map((s) => s.item);

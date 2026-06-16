@@ -114,7 +114,13 @@ export const PATCH = withAuth(async (_user, req) => {
       "openaiModel",
       "geminiModel",
       "anthropicModel",
-      "primaryProvider"
+      "primaryProvider",
+      "newOppProvider",
+      "newOppInstructions",
+      "refreshOppProvider",
+      "refreshOppInstructions",
+      "communityOppProvider",
+      "communityOppInstructions"
     ] as const;
     const patch: Record<string, unknown> = { updatedAt: new Date() };
     for (const k of allowed) {

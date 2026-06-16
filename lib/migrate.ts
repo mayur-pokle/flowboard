@@ -172,7 +172,28 @@ const STATEMENTS: string[] = [
   `ALTER TABLE "discoveredOpportunities" ADD COLUMN IF NOT EXISTS "contentMarkdown" text`,
   `ALTER TABLE "discoveredOpportunities" ADD COLUMN IF NOT EXISTS "contentGeneratedAt" timestamp`,
   `ALTER TABLE "discoveredOpportunities" ADD COLUMN IF NOT EXISTS "qualitySignals" jsonb`,
-  `ALTER TABLE "discoveredOpportunities" ADD COLUMN IF NOT EXISTS "linkedTaskId" text`
+  `ALTER TABLE "discoveredOpportunities" ADD COLUMN IF NOT EXISTS "linkedTaskId" text`,
+  // ── Demand-capture pipeline columns ──
+  `ALTER TABLE "discoveredOpportunities" ADD COLUMN IF NOT EXISTS "kanbanColumn" text NOT NULL DEFAULT 'intake'`,
+  `ALTER TABLE "discoveredOpportunities" ADD COLUMN IF NOT EXISTS "opportunityType" text NOT NULL DEFAULT 'new'`,
+  `ALTER TABLE "discoveredOpportunities" ADD COLUMN IF NOT EXISTS "priority" text NOT NULL DEFAULT 'P1'`,
+  `ALTER TABLE "discoveredOpportunities" ADD COLUMN IF NOT EXISTS "trending" boolean NOT NULL DEFAULT false`,
+  `ALTER TABLE "discoveredOpportunities" ADD COLUMN IF NOT EXISTS "weeklyImpressions" integer NOT NULL DEFAULT 0`,
+  `ALTER TABLE "discoveredOpportunities" ADD COLUMN IF NOT EXISTS "previousWeekImpressions" integer NOT NULL DEFAULT 0`,
+  `ALTER TABLE "discoveredOpportunities" ADD COLUMN IF NOT EXISTS "competitorUrls" jsonb`,
+  `ALTER TABLE "discoveredOpportunities" ADD COLUMN IF NOT EXISTS "competitorGapScore" integer NOT NULL DEFAULT 0`,
+  `ALTER TABLE "discoveredOpportunities" ADD COLUMN IF NOT EXISTS "aiCitationsCited" jsonb`,
+  `ALTER TABLE "discoveredOpportunities" ADD COLUMN IF NOT EXISTS "cannibalizingPages" jsonb`,
+  `ALTER TABLE "discoveredOpportunities" ADD COLUMN IF NOT EXISTS "briefData" jsonb`,
+  `ALTER TABLE "discoveredOpportunities" ADD COLUMN IF NOT EXISTS "contentChecks" jsonb`,
+  `ALTER TABLE "discoveredOpportunities" ADD COLUMN IF NOT EXISTS "isSample" boolean NOT NULL DEFAULT false`,
+  // ── Per-opportunity-type LLM mapping (settings) ──
+  `ALTER TABLE "settings" ADD COLUMN IF NOT EXISTS "newOppProvider" text NOT NULL DEFAULT 'openai'`,
+  `ALTER TABLE "settings" ADD COLUMN IF NOT EXISTS "newOppInstructions" text NOT NULL DEFAULT ''`,
+  `ALTER TABLE "settings" ADD COLUMN IF NOT EXISTS "refreshOppProvider" text NOT NULL DEFAULT 'anthropic'`,
+  `ALTER TABLE "settings" ADD COLUMN IF NOT EXISTS "refreshOppInstructions" text NOT NULL DEFAULT ''`,
+  `ALTER TABLE "settings" ADD COLUMN IF NOT EXISTS "communityOppProvider" text NOT NULL DEFAULT 'gemini'`,
+  `ALTER TABLE "settings" ADD COLUMN IF NOT EXISTS "communityOppInstructions" text NOT NULL DEFAULT ''`
 ];
 
 // Run all statements. Each one is wrapped in its own try/catch so a

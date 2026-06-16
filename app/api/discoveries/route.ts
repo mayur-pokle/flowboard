@@ -3,30 +3,47 @@ import { and, desc, ne } from "drizzle-orm";
 import { db } from "@/db";
 import { discoveredOpportunities } from "@/db/schema";
 import { withAuth, serverError } from "@/lib/api";
+import { ensureSchema } from "@/lib/migrate";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 // GET /api/discoveries
-// Returns all opportunities except archived/dismissed ones, ordered by
-// score descending so the most actionable rows come first. Maps DB
-// rows to the API shape the Opportunities Board expects, including the
-// new 4-pillar score breakdown + intent + AI citation gap flag.
+// Returns every opportunity except hard-archived ones, projected for
+// the new Kanban surface. The board groups by kanbanColumn so we
+// include that field; cards render the type / priority / signals
+// without needing a second lookup.
+//
+// Pass ?includeRejected=true to ALSO include rejected rows — used by
+// the Rejected (N) count and the undo flow.
 
-export const GET = withAuth(async () => {
+export const GET = withAuth(async (_user, req) => {
   try {
+    // Eager schema sync — protects against deploys where new columns
+    // haven't landed in production yet.
+    await ensureSchema().catch(() => {});
+
+    const url = new URL(req.url);
+    const includeRejected = url.searchParams.get("includeRejected") === "true";
+
     const rows = await db
       .select()
       .from(discoveredOpportunities)
       .where(
         and(
-          ne(discoveredOpportunities.status, "archived"),
           ne(discoveredOpportunities.status, "dismissed")
+          // Note: we keep "archived"/"rejected" rows in the DB even
+          // when not surfaced — the rejection is recoverable.
         )
       )
       .orderBy(desc(discoveredOpportunities.score));
+
+    const filtered = includeRejected
+      ? rows
+      : rows.filter((r) => r.kanbanColumn !== "rejected");
+
     return NextResponse.json({
-      opportunities: rows.map((r) => ({
+      opportunities: filtered.map((r) => ({
         id: r.id,
         source: r.source,
         query: r.query,
@@ -36,6 +53,21 @@ export const GET = withAuth(async () => {
         scoreBreakdown: r.scoreBreakdown ?? null,
         intent: r.intent ?? null,
         aiCitationGap: r.aiCitationGap ?? false,
+        // Pipeline state
+        kanbanColumn: r.kanbanColumn ?? "intake",
+        opportunityType: r.opportunityType ?? "new",
+        priority: r.priority ?? "P1",
+        trending: r.trending ?? false,
+        weeklyImpressions: r.weeklyImpressions ?? 0,
+        previousWeekImpressions: r.previousWeekImpressions ?? 0,
+        competitorUrls: r.competitorUrls ?? [],
+        competitorGapScore: r.competitorGapScore ?? 0,
+        aiCitationsCited: r.aiCitationsCited ?? [],
+        cannibalizingPages: r.cannibalizingPages ?? [],
+        briefData: r.briefData ?? null,
+        contentChecks: r.contentChecks ?? null,
+        isSample: r.isSample ?? false,
+        // Legacy
         status: r.status,
         reason: r.reason,
         movedToTaskId: r.movedToTaskId,
@@ -48,7 +80,10 @@ export const GET = withAuth(async () => {
           : null,
         createdAt: r.createdAt.toISOString(),
         updatedAt: r.updatedAt.toISOString()
-      }))
+      })),
+      // Count rejected rows separately for the "Rejected (N)" link.
+      rejectedCount: rows.filter((r) => r.kanbanColumn === "rejected").length,
+      sampleCount: rows.filter((r) => r.isSample).length
     });
   } catch (err) {
     return serverError(err);

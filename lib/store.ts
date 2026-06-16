@@ -152,6 +152,15 @@ const defaultSettings: Settings = {
 
   seedKeywords: "",
   topicsToAvoid: "",
+
+  // Per-opportunity-type LLM defaults — match the spec mapping.
+  newOppProvider: "openai",
+  newOppInstructions: "",
+  refreshOppProvider: "anthropic",
+  refreshOppInstructions: "",
+  communityOppProvider: "gemini",
+  communityOppInstructions: "",
+
   competitors: []
 };
 
@@ -334,6 +343,42 @@ export const useStore = create<Store>()((set, get) => ({
               ? ((s as unknown as { primaryProvider: "openai" | "gemini" })
                   .primaryProvider as "openai" | "gemini")
               : "auto",
+          // Per-opportunity-type LLM (Discovery content gen). Fall back
+          // to the spec defaults if the field is missing from the API
+          // response (legacy rows before the migration).
+          newOppProvider:
+            (s as unknown as { newOppProvider?: string }).newOppProvider ===
+              "anthropic" ||
+            (s as unknown as { newOppProvider?: string }).newOppProvider ===
+              "gemini"
+              ? ((s as unknown as { newOppProvider: "anthropic" | "gemini" })
+                  .newOppProvider as "anthropic" | "gemini")
+              : "openai",
+          newOppInstructions:
+            (s as unknown as { newOppInstructions?: string })
+              .newOppInstructions ?? "",
+          refreshOppProvider:
+            (s as unknown as { refreshOppProvider?: string })
+              .refreshOppProvider === "openai" ||
+            (s as unknown as { refreshOppProvider?: string })
+              .refreshOppProvider === "gemini"
+              ? ((s as unknown as { refreshOppProvider: "openai" | "gemini" })
+                  .refreshOppProvider as "openai" | "gemini")
+              : "anthropic",
+          refreshOppInstructions:
+            (s as unknown as { refreshOppInstructions?: string })
+              .refreshOppInstructions ?? "",
+          communityOppProvider:
+            (s as unknown as { communityOppProvider?: string })
+              .communityOppProvider === "openai" ||
+            (s as unknown as { communityOppProvider?: string })
+              .communityOppProvider === "anthropic"
+              ? ((s as unknown as { communityOppProvider: "openai" | "anthropic" })
+                  .communityOppProvider as "openai" | "anthropic")
+              : "gemini",
+          communityOppInstructions:
+            (s as unknown as { communityOppInstructions?: string })
+              .communityOppInstructions ?? "",
           // Normalize each competitor's tier (legacy rows may be missing it).
           competitors: (s.competitors || []).map((c) => ({
             ...c,
@@ -645,7 +690,13 @@ export const useStore = create<Store>()((set, get) => ({
         "openaiModel",
         "geminiModel",
         "anthropicModel",
-        "primaryProvider"
+        "primaryProvider",
+        "newOppProvider",
+        "newOppInstructions",
+        "refreshOppProvider",
+        "refreshOppInstructions",
+        "communityOppProvider",
+        "communityOppInstructions"
       ] as const) {
         if (patch[k] !== undefined) serverPatch[k] = patch[k];
       }

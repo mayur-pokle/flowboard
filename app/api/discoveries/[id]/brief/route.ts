@@ -4,29 +4,34 @@ import { db } from "@/db";
 import {
   discoveredOpportunities,
   settings,
-  competitors,
   existingContent
 } from "@/db/schema";
 import { withAuth, serverError } from "@/lib/api";
 import {
-  generateBriefMarkdown,
+  buildBriefData,
+  renderBriefAsMarkdown,
   findCannibalizationMatches,
-  findRelatedContent,
-  type BriefInput
+  type BriefData
 } from "@/lib/brief-generator";
-import type {
-  Intent,
-  ScoreBreakdown
+import {
+  classifyOpportunity,
+  type Intent,
+  type ScoreBreakdown,
+  type Priority,
+  type OpportunityType
 } from "@/lib/opportunity-classifier";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 // POST /api/discoveries/[id]/brief
-// Deterministically (re)generates the brief markdown from the
-// opportunity + workspace context. Saves and returns it.
+// Deterministically (re)generates the brief from the opportunity's
+// signals + workspace context. Stores the structured briefData on the
+// opportunity row so the brief page is instant on every revisit. Must
+// complete in under 2 seconds — no LLM in this path.
 //
-// PATCH same path = save an edited brief verbatim.
+// PATCH same path = save an edited brief verbatim (markdown only;
+// briefData is the source of truth, edits go into briefMarkdown).
 
 export const POST = withAuth(
   async (_user, _req, ctx: { params: { id: string } }) => {
@@ -39,83 +44,102 @@ export const POST = withAuth(
       if (!opp) {
         return NextResponse.json({ error: "Not found" }, { status: 404 });
       }
-
       const [brand] = await db
         .select()
         .from(settings)
         .where(eq(settings.id, "workspace"))
         .limit(1);
-      const comps = await db.select().from(competitors);
       const library = await db.select().from(existingContent);
 
-      const cannibalization = findCannibalizationMatches(
-        opp.query,
-        library.map((l) => ({
-          url: l.url,
-          title: l.title,
-          targetKeyword: l.targetKeyword
-        }))
-      );
-      const cannibalUrls = new Set(cannibalization.map((c) => c.url));
-      const related = findRelatedContent(
-        opp.query,
-        library.map((l) => ({
-          url: l.url,
-          title: l.title,
-          targetKeyword: l.targetKeyword
-        })),
-        cannibalUrls
-      );
+      // Cannibalization detection — fuzzy match against library titles.
+      const cannibalization =
+        (opp.cannibalizingPages as Array<{ url: string; title: string }> | null) ??
+        findCannibalizationMatches(
+          opp.query,
+          library.map((l) => ({
+            url: l.url,
+            title: l.title,
+            targetKeyword: l.targetKeyword
+          }))
+        );
 
-      const briefInput: BriefInput = {
+      // If the row doesn't have a breakdown yet (e.g. legacy GSC row),
+      // re-classify now so the brief has structured score data.
+      let intent = (opp.intent as Intent | null) || "informational";
+      let breakdown: ScoreBreakdown | null =
+        (opp.scoreBreakdown as ScoreBreakdown | null) ?? null;
+      let opportunityType =
+        (opp.opportunityType as OpportunityType | null) || "new";
+      let priority = (opp.priority as Priority | null) || "P1";
+      let totalScore = opp.score;
+
+      if (!breakdown) {
+        const m = (opp.metrics as Record<string, number> | null) || {};
+        const classified = classifyOpportunity({
+          source: opp.source,
+          query: opp.query,
+          impressions: m.impressions,
+          position: m.position,
+          ctr: m.ctr,
+          volume: m.volume,
+          difficulty: m.difficulty,
+          competitorGapScore: opp.competitorGapScore || undefined,
+          weeklyImpressions: opp.weeklyImpressions || undefined,
+          previousWeekImpressions: opp.previousWeekImpressions || undefined,
+          cannibalizingPageCount: cannibalization.length
+        });
+        intent = classified.intent;
+        breakdown = classified.scoreBreakdown;
+        opportunityType = classified.opportunityType;
+        priority = classified.priority;
+        totalScore = classified.totalScore;
+      }
+
+      const briefData: BriefData = buildBriefData({
         query: opp.query,
-        source: opp.source,
-        intent: (opp.intent as Intent | null) ?? null,
-        score: opp.score,
-        scoreBreakdown:
-          (opp.scoreBreakdown as ScoreBreakdown | null) ?? null,
+        intent,
+        opportunityType,
+        priority,
+        scoreBreakdown: breakdown,
+        totalScore,
         aiCitationGap: opp.aiCitationGap ?? false,
-        metrics:
-          (opp.metrics as Record<string, number | string> | null) ?? null,
-        reason: opp.reason,
-        brand: {
-          companyName: brand?.companyName ?? "",
-          brandNiche: brand?.brandNiche ?? "",
-          brandAudience: brand?.brandAudience ?? "",
-          brandVoice: brand?.brandVoice ?? "",
-          primaryCta: brand?.primaryCta ?? "",
-          valueProposition: brand?.valueProposition ?? ""
-        },
-        competitors: comps
-          .filter((c) => c.tier !== "watch")
-          .map((c) => ({ name: c.name, url: c.url, tier: c.tier })),
-        relatedExistingContent: related,
-        cannibalizationMatches: cannibalization
-      };
-
-      const briefMarkdown = generateBriefMarkdown(briefInput);
+        competitorUrls: (opp.competitorUrls as string[] | null) ?? [],
+        competitorGapScore: opp.competitorGapScore ?? 0,
+        aiCitationsCited: (opp.aiCitationsCited as string[] | null) ?? [],
+        cannibalizingPages: cannibalization,
+        brandPrimaryCta: brand?.primaryCta || undefined
+      });
+      const briefMarkdown = renderBriefAsMarkdown(briefData, opp.query);
       const now = new Date();
+
+      // Auto-advance the column if the user came from Accept.
+      const nextColumn =
+        opp.kanbanColumn === "intake" ? "new" : opp.kanbanColumn;
 
       await db
         .update(discoveredOpportunities)
         .set({
+          briefData,
           briefMarkdown,
           briefGeneratedAt: now,
-          // Advance pipeline status if it's still "new" or legacy.
-          status:
-            opp.status === "new" || opp.status === "triaging"
-              ? "briefed"
-              : opp.status,
+          // Persist the classification we just (re)derived.
+          intent,
+          opportunityType,
+          priority,
+          score: totalScore,
+          scoreBreakdown: breakdown,
+          cannibalizingPages: cannibalization,
+          kanbanColumn: nextColumn,
+          status: opp.status === "new" ? "briefed" : opp.status,
           updatedAt: now
         })
         .where(eq(discoveredOpportunities.id, ctx.params.id));
 
       return NextResponse.json({
         ok: true,
+        briefData,
         briefMarkdown,
-        briefGeneratedAt: now.toISOString(),
-        cannibalization,
-        related
+        briefGeneratedAt: now.toISOString()
       });
     } catch (err) {
       return serverError(err);
@@ -123,8 +147,6 @@ export const POST = withAuth(
   }
 );
 
-// Save an edited brief verbatim. We don't validate the markdown — the
-// writer owns this surface.
 export const PATCH = withAuth(
   async (_user, req, ctx: { params: { id: string } }) => {
     try {

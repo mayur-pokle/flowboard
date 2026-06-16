@@ -51,7 +51,8 @@ export const SOURCE_LABEL: Record<string, string> = {
   refresh: "Refresh",
   "ai-citations": "AI Citations",
   sitemap: "Sitemap",
-  "competitor-sitemap": "Sitemap"
+  "competitor-sitemap": "Sitemap",
+  "ai-gaps": "AI Gap"
 };
 export const SOURCE_TONE: Record<
   string,
@@ -63,7 +64,8 @@ export const SOURCE_TONE: Record<
   refresh: "danger",
   "ai-citations": "info",
   sitemap: "neutral",
-  "competitor-sitemap": "neutral"
+  "competitor-sitemap": "neutral",
+  "ai-gaps": "info"
 };
 
 // ── Intent → label + tone ──

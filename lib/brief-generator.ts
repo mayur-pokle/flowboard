@@ -231,7 +231,13 @@ function ctaFor(intent: Intent, defaultCta?: string): string {
 
 // ── Public assembly entrypoint ──
 export interface BriefInput {
+  // `query` here is the SEO TARGET KEYWORD (2-5 words). For
+  // AI-gap-sourced opportunities this differs from `articleTitle`,
+  // which is the proposed headline.
   query: string;
+  // Optional headline override — used by the H1 in the brief markdown.
+  // When omitted, `query` doubles as the title (legacy behavior).
+  articleTitle?: string;
   intent: Intent;
   opportunityType: OpportunityType;
   priority: Priority;
@@ -308,9 +314,16 @@ export function buildBriefData(input: BriefInput): BriefData {
 // Used by the brief page when rendering the structured data as a
 // reading document. The structured BriefData is the source of truth;
 // markdown is derived for display.
-export function renderBriefAsMarkdown(brief: BriefData, query: string): string {
+//
+// `displayTitle` is the article title (card headline) — for legacy GSC
+// rows where the title and the keyword are the same, callers pass the
+// keyword for both. For Gemini gaps, the title and keyword differ.
+export function renderBriefAsMarkdown(
+  brief: BriefData,
+  displayTitle: string
+): string {
   const lines: string[] = [];
-  lines.push(`# Brief: ${query}`);
+  lines.push(`# Brief: ${displayTitle}`);
   lines.push("");
   lines.push(
     `> **${brief.recommendedFormat}** · intent: **${brief.intent}** · ` +

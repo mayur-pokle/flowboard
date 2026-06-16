@@ -95,8 +95,21 @@ export const POST = withAuth(
         totalScore = classified.totalScore;
       }
 
+      // When the row was created by the Gemini gap identifier (or the
+      // sample seeder), `query` is an article TITLE and the SEO keyword
+      // lives in metrics.targetKeyword. Falling back to query keeps
+      // legacy GSC rows working.
+      const metricsBag =
+        (opp.metrics as Record<string, unknown> | null) || {};
+      const targetKeyword =
+        typeof metricsBag.targetKeyword === "string" &&
+        metricsBag.targetKeyword.trim().length > 0
+          ? (metricsBag.targetKeyword as string).trim()
+          : opp.query;
+
       const briefData: BriefData = buildBriefData({
-        query: opp.query,
+        query: targetKeyword,
+        articleTitle: opp.query,
         intent,
         opportunityType,
         priority,

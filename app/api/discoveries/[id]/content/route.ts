@@ -65,6 +65,16 @@ export const POST = withAuth(
 
       const oppType = (opp.opportunityType as OpportunityType) || "new";
 
+      // For Gemini-sourced cards, `query` holds the article TITLE.
+      // The actual SEO keyword to optimize for lives in metrics.
+      const metricsBag =
+        (opp.metrics as Record<string, unknown> | null) || {};
+      const targetKeyword =
+        typeof metricsBag.targetKeyword === "string" &&
+        metricsBag.targetKeyword.trim().length > 0
+          ? (metricsBag.targetKeyword as string).trim()
+          : opp.query;
+
       // Move to In-progress IMMEDIATELY so the UI reflects state — the
       // generation work itself runs synchronously below but the column
       // change is the user-visible "instant" transition.
@@ -79,7 +89,8 @@ export const POST = withAuth(
         .where(eq(discoveredOpportunities.id, ctx.params.id));
 
       const result = await generateDiscoveryContent({
-        query: opp.query,
+        query: targetKeyword,
+        articleTitle: opp.query,
         brief,
         opportunityType: oppType,
         providerByType,
@@ -105,7 +116,7 @@ export const POST = withAuth(
 
       const quality = runQualityChecks({
         markdown: result.markdown,
-        targetKeyword: opp.query,
+        targetKeyword,
         intent: brief.intent,
         wordCountMin: brief.wordCountMin,
         wordCountMax: brief.wordCountMax,
@@ -169,9 +180,16 @@ export const PATCH = withAuth(
       const now = new Date();
       let quality = null;
       if (brief) {
+        const metricsBag =
+          (opp.metrics as Record<string, unknown> | null) || {};
+        const targetKw =
+          typeof metricsBag.targetKeyword === "string" &&
+          metricsBag.targetKeyword.trim().length > 0
+            ? (metricsBag.targetKeyword as string).trim()
+            : opp.query;
         quality = runQualityChecks({
           markdown: body.contentMarkdown,
-          targetKeyword: opp.query,
+          targetKeyword: targetKw,
           intent: brief.intent,
           wordCountMin: brief.wordCountMin,
           wordCountMax: brief.wordCountMax,

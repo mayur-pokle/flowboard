@@ -1,9 +1,13 @@
 // ── Sample data seeder ───────────────────────────────────────────────
 //
 // The board MUST be usable with zero API keys + zero data sources.
-// On first load (or via an explicit reseed) we drop 10 realistic
-// opportunities into the DB so the strategist can experience the full
-// workflow — accept, brief, generate, mark done — without any setup.
+// On first load (or via an explicit reseed) we drop article-LEVEL
+// opportunities into the DB — each one reads like a real content
+// piece a strategist might commission, not a raw search keyword.
+//
+// Card headline = the article title (stored in `query`).
+// Underlying SEO keyword lives in `metrics.targetKeyword` so the
+// brief + content generators target the right phrase.
 
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
@@ -17,8 +21,9 @@ import type {
 } from "@/lib/opportunity-classifier";
 
 interface Sample {
-  query: string;
-  source: string; // gsc | semrush | ahrefs | refresh | ai-citations | sitemap
+  title: string;
+  targetKeyword: string;
+  source: string; // ai-gaps | refresh | semrush | ahrefs | gsc | ai-citations
   opportunityType: OpportunityType;
   kanbanColumn: "intake" | "new" | "in_progress" | "done";
   intent: Intent;
@@ -27,8 +32,6 @@ interface Sample {
   aiCitationGap: boolean;
   weeklyImpressions: number;
   previousWeekImpressions: number;
-  position: number | null;
-  ctr: number | null;
   competitorGapScore: number;
   competitorUrls: string[];
   aiCitationsCited: string[];
@@ -39,10 +42,11 @@ interface Sample {
 }
 
 const SAMPLES: Sample[] = [
-  // ── Intake column — fresh, awaiting decision ──
+  // ── Intake column — fresh gaps, awaiting decision ──
   {
-    query: "best cash flow forecasting software",
-    source: "semrush",
+    title: "AI accountants vs. human bookkeepers: when to switch in 2026",
+    targetKeyword: "ai accountant vs human",
+    source: "ai-gaps",
     opportunityType: "new",
     kanbanColumn: "intake",
     intent: "commercial",
@@ -51,15 +55,15 @@ const SAMPLES: Sample[] = [
     aiCitationGap: true,
     weeklyImpressions: 12480,
     previousWeekImpressions: 8930,
-    position: 8.4,
-    ctr: 0.024,
     competitorGapScore: 78,
     competitorUrls: [
-      "https://example-competitor-a.com/cash-flow-software",
-      "https://example-competitor-b.com/best-cash-flow-tools",
-      "https://example-competitor-c.com/cfo-tools/forecasting"
+      "https://example-competitor-a.com/ai-vs-human-bookkeeper",
+      "https://example-competitor-b.com/blog/ai-accountant-comparison"
     ],
-    aiCitationsCited: ["example-competitor-a.com", "example-competitor-b.com"],
+    aiCitationsCited: [
+      "example-competitor-a.com",
+      "example-competitor-b.com"
+    ],
     cannibalizingPages: [],
     scoreBreakdown: {
       searchDemand: 17,
@@ -69,11 +73,44 @@ const SAMPLES: Sample[] = [
       conversionFit: 10,
       cannibalizationClarity: 10
     },
-    reason: "12.5K impressions, +40% WoW, page-2 ranking, competitors cited by Perplexity but you aren't.",
+    reason:
+      "Competitors own the comparison query and AI engines cite them for it. You have product authority but no equivalent piece live.",
     url: null
   },
   {
-    query: "what is runway in startups",
+    title: "The CFO's playbook: choosing cash flow forecasting software",
+    targetKeyword: "cash flow forecasting software",
+    source: "ai-gaps",
+    opportunityType: "new",
+    kanbanColumn: "intake",
+    intent: "commercial",
+    priority: "P0",
+    trending: false,
+    aiCitationGap: true,
+    weeklyImpressions: 8420,
+    previousWeekImpressions: 8190,
+    competitorGapScore: 71,
+    competitorUrls: [
+      "https://example-competitor-c.com/cash-flow-software-guide",
+      "https://example-competitor-d.com/best-forecasting-tools"
+    ],
+    aiCitationsCited: ["example-competitor-c.com"],
+    cannibalizingPages: [],
+    scoreBreakdown: {
+      searchDemand: 15,
+      trendingVelocity: 5,
+      competitorGap: 14,
+      aiCitationGap: 18,
+      conversionFit: 10,
+      cannibalizationClarity: 10
+    },
+    reason:
+      "High commercial intent. Comparison piece is missing from your library and AI engines surface competitor guides.",
+    url: null
+  },
+  {
+    title: "How AI engines answer founders' top finance questions in 2026",
+    targetKeyword: "ai answers for finance",
     source: "ai-citations",
     opportunityType: "community",
     kanbanColumn: "intake",
@@ -83,14 +120,15 @@ const SAMPLES: Sample[] = [
     aiCitationGap: true,
     weeklyImpressions: 5840,
     previousWeekImpressions: 3290,
-    position: 18,
-    ctr: 0.009,
     competitorGapScore: 62,
     competitorUrls: [
       "https://example-competitor-d.com/glossary/runway",
       "https://example-competitor-e.com/blog/startup-runway"
     ],
-    aiCitationsCited: ["example-competitor-d.com", "example-competitor-e.com"],
+    aiCitationsCited: [
+      "example-competitor-d.com",
+      "example-competitor-e.com"
+    ],
     cannibalizingPages: [],
     scoreBreakdown: {
       searchDemand: 14,
@@ -100,12 +138,14 @@ const SAMPLES: Sample[] = [
       conversionFit: 6,
       cannibalizationClarity: 10
     },
-    reason: "ChatGPT + Perplexity cite competitors when users ask this. You aren't in the answer.",
+    reason:
+      "AI Citations Tracker shows competitors cited by Perplexity + ChatGPT for these prompts; your domain is absent from the answer set.",
     url: null
   },
   {
-    query: "stripe vs chargebee for SaaS",
-    source: "ahrefs",
+    title: "Stripe vs. Chargebee for SaaS billing — a 2026 head-to-head",
+    targetKeyword: "stripe vs chargebee saas",
+    source: "ai-gaps",
     opportunityType: "new",
     kanbanColumn: "intake",
     intent: "commercial",
@@ -114,8 +154,6 @@ const SAMPLES: Sample[] = [
     aiCitationGap: true,
     weeklyImpressions: 4210,
     previousWeekImpressions: 4090,
-    position: 14,
-    ctr: 0.015,
     competitorGapScore: 71,
     competitorUrls: [
       "https://example-competitor-f.com/stripe-vs-chargebee",
@@ -131,13 +169,15 @@ const SAMPLES: Sample[] = [
       conversionFit: 10,
       cannibalizationClarity: 10
     },
-    reason: "High commercial intent. KD 38 is achievable. Direct vs. comparison is one of the top citation patterns.",
+    reason:
+      "High-intent comparison query with structural advantage — head-to-heads are the citation pattern AI engines extract first.",
     url: null
   },
   {
-    query: "month-end close checklist",
-    source: "gsc",
-    opportunityType: "new",
+    title: "Month-end close: the 12-step checklist that ships before noon",
+    targetKeyword: "month-end close checklist",
+    source: "refresh",
+    opportunityType: "refresh",
     kanbanColumn: "intake",
     intent: "informational",
     priority: "P1",
@@ -145,8 +185,6 @@ const SAMPLES: Sample[] = [
     aiCitationGap: false,
     weeklyImpressions: 2340,
     previousWeekImpressions: 2210,
-    position: 11,
-    ctr: 0.018,
     competitorGapScore: 45,
     competitorUrls: [
       "https://example-competitor-h.com/blog/month-end-close-checklist"
@@ -166,13 +204,16 @@ const SAMPLES: Sample[] = [
       conversionFit: 6,
       cannibalizationClarity: 4
     },
-    reason: "Existing article overlaps. Differentiate scope or update the existing page instead of writing new.",
+    reason:
+      "Existing piece is slipping. Refresh with 2026 timing, real CFO benchmarks, and a downloadable checklist asset.",
     url: null
   },
+
   // ── New column — accepted, brief generated ──
   {
-    query: "how to forecast SaaS revenue",
-    source: "gsc",
+    title: "How to forecast SaaS revenue (with a worked 18-month example)",
+    targetKeyword: "saas revenue forecasting",
+    source: "ai-gaps",
     opportunityType: "new",
     kanbanColumn: "new",
     intent: "informational",
@@ -181,8 +222,6 @@ const SAMPLES: Sample[] = [
     aiCitationGap: true,
     weeklyImpressions: 8730,
     previousWeekImpressions: 5210,
-    position: 9,
-    ctr: 0.021,
     competitorGapScore: 68,
     competitorUrls: [
       "https://example-competitor-a.com/saas-revenue-forecasting",
@@ -198,11 +237,13 @@ const SAMPLES: Sample[] = [
       conversionFit: 6,
       cannibalizationClarity: 10
     },
-    reason: "Strong demand, accelerating, AI citation gap. Brief ready.",
+    reason:
+      "Strong demand, accelerating searches, AI citation gap. Ready for content production.",
     url: null
   },
   {
-    query: "burn multiple benchmark by stage",
+    title: "Burn multiple benchmarks by stage: 2026 founder data set",
+    targetKeyword: "burn multiple benchmark",
     source: "ai-citations",
     opportunityType: "community",
     kanbanColumn: "new",
@@ -212,8 +253,6 @@ const SAMPLES: Sample[] = [
     aiCitationGap: true,
     weeklyImpressions: 1840,
     previousWeekImpressions: 1620,
-    position: 22,
-    ctr: 0.004,
     competitorGapScore: 54,
     competitorUrls: [
       "https://example-competitor-b.com/benchmarks/burn-multiple"
@@ -228,13 +267,16 @@ const SAMPLES: Sample[] = [
       conversionFit: 6,
       cannibalizationClarity: 10
     },
-    reason: "AI engines cite competitor benchmarks. Original data + comparison table can win the citation.",
+    reason:
+      "AI engines cite competitor benchmark data. Original numbers + a comparison table can win the citation.",
     url: null
   },
+
   // ── In-progress column — content being drafted ──
   {
-    query: "saas billing automation guide",
-    source: "semrush",
+    title: "The 2026 SaaS billing automation playbook",
+    targetKeyword: "saas billing automation",
+    source: "ai-gaps",
     opportunityType: "new",
     kanbanColumn: "in_progress",
     intent: "commercial",
@@ -243,8 +285,6 @@ const SAMPLES: Sample[] = [
     aiCitationGap: false,
     weeklyImpressions: 3120,
     previousWeekImpressions: 3010,
-    position: 12,
-    ctr: 0.019,
     competitorGapScore: 64,
     competitorUrls: [
       "https://example-competitor-c.com/guides/saas-billing-automation"
@@ -259,11 +299,13 @@ const SAMPLES: Sample[] = [
       conversionFit: 10,
       cannibalizationClarity: 10
     },
-    reason: "Commercial intent, healthy gap score. Content drafting in progress.",
+    reason:
+      "Commercial intent, healthy gap score. Drafting in progress.",
     url: null
   },
   {
-    query: "ARR vs MRR calculation",
+    title: "ARR vs. MRR: the calculation finance teams actually use",
+    targetKeyword: "arr vs mrr calculation",
     source: "refresh",
     opportunityType: "refresh",
     kanbanColumn: "in_progress",
@@ -273,8 +315,6 @@ const SAMPLES: Sample[] = [
     aiCitationGap: false,
     weeklyImpressions: 2210,
     previousWeekImpressions: 2890,
-    position: 14,
-    ctr: 0.011,
     competitorGapScore: 38,
     competitorUrls: [
       "https://example-competitor-a.com/arr-vs-mrr",
@@ -290,13 +330,16 @@ const SAMPLES: Sample[] = [
       conversionFit: 6,
       cannibalizationClarity: 10
     },
-    reason: "Existing page slipping from page 1. Refresh with current 2026 benchmarks.",
+    reason:
+      "Existing page slipping from page 1. Refresh with current benchmarks + a calculator embed.",
     url: "https://example.com/blog/arr-vs-mrr-explained"
   },
+
   // ── Done column — published, archived ──
   {
-    query: "founder mode finance metrics",
-    source: "gsc",
+    title: "Founder-mode finance metrics: the 7 numbers that matter",
+    targetKeyword: "founder finance metrics",
+    source: "ai-gaps",
     opportunityType: "new",
     kanbanColumn: "done",
     intent: "informational",
@@ -305,8 +348,6 @@ const SAMPLES: Sample[] = [
     aiCitationGap: false,
     weeklyImpressions: 1450,
     previousWeekImpressions: 1380,
-    position: 6,
-    ctr: 0.043,
     competitorGapScore: 30,
     competitorUrls: ["https://example-competitor-e.com/founder-finance"],
     aiCitationsCited: [],
@@ -319,11 +360,14 @@ const SAMPLES: Sample[] = [
       conversionFit: 6,
       cannibalizationClarity: 10
     },
-    reason: "Published. Steady traffic, healthy CTR.",
+    reason:
+      "Published — steady traffic, healthy CTR, ranking #6 in our segment.",
     url: "https://example.com/blog/founder-mode-finance-metrics"
   },
   {
-    query: "free cash flow vs operating cash flow",
+    title:
+      "Free cash flow vs. operating cash flow — the 5-minute explainer",
+    targetKeyword: "free cash flow vs operating cash flow",
     source: "ai-citations",
     opportunityType: "community",
     kanbanColumn: "done",
@@ -333,8 +377,6 @@ const SAMPLES: Sample[] = [
     aiCitationGap: false,
     weeklyImpressions: 980,
     previousWeekImpressions: 920,
-    position: 4,
-    ctr: 0.067,
     competitorGapScore: 22,
     competitorUrls: [],
     aiCitationsCited: [],
@@ -347,12 +389,12 @@ const SAMPLES: Sample[] = [
       conversionFit: 6,
       cannibalizationClarity: 10
     },
-    reason: "Closed loop — published and now cited by Perplexity for the original prompt.",
+    reason:
+      "Closed loop — published and now cited by Perplexity for the original tracked prompt.",
     url: "https://example.com/blog/free-cash-flow-vs-operating-cash-flow"
   }
 ];
 
-// Compute total score from the breakdown for storage.
 function totalFromBreakdown(b: ScoreBreakdown): number {
   return Math.round(
     b.searchDemand +
@@ -364,9 +406,6 @@ function totalFromBreakdown(b: ScoreBreakdown): number {
   );
 }
 
-// Returns counts. If `force` is true, also wipes existing sample rows
-// before reseeding (useful in dev). Default behavior is no-op if any
-// row exists in the table.
 export async function seedSampleOpportunities(
   opts: { force?: boolean } = {}
 ): Promise<{ inserted: number; skipped: boolean }> {
@@ -381,18 +420,19 @@ export async function seedSampleOpportunities(
     return {
       id: uid("disc"),
       source: s.source,
-      query: s.query,
+      // Article title in `query` — this is what the card shows as a headline.
+      query: s.title,
       url: s.url,
+      // SEO keyword lives in metrics — brief + content gens read it from here.
       metrics: {
+        targetKeyword: s.targetKeyword,
         impressions: s.weeklyImpressions,
-        clicks: Math.round(s.weeklyImpressions * (s.ctr || 0)),
-        ctr: s.ctr,
-        position: s.position
-      } as Record<string, number | null>,
+        position: 12
+      } as Record<string, number | string>,
       score,
       status: "new" as const,
       reason: s.reason,
-      dedupKey: `sample::${s.query.toLowerCase()}`,
+      dedupKey: `sample::${s.title.toLowerCase()}`,
       intent: s.intent,
       aiCitationGap: s.aiCitationGap,
       scoreBreakdown: s.scoreBreakdown,
@@ -416,8 +456,6 @@ export async function seedSampleOpportunities(
   return { inserted: rows.length, skipped: false };
 }
 
-// Removes every sample row. Used when the strategist clicks "Clear
-// sample data" after connecting real sources.
 export async function clearSampleOpportunities(): Promise<number> {
   const rows = await db
     .select()

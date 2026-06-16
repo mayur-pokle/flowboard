@@ -91,10 +91,26 @@ export function OpportunityCard({
         </div>
       </div>
 
-      {/* Query — the headline */}
-      <div className="font-mono text-sm font-semibold text-ink-900 mb-2 leading-snug line-clamp-2">
+      {/* Headline — article title for AI gaps, search query for raw sources */}
+      <div className="text-sm font-semibold text-ink-900 mb-1 leading-snug line-clamp-2">
         {opp.query}
       </div>
+      {/* SEO target keyword sub-line (only when distinct from the title) */}
+      {(() => {
+        const tk =
+          opp.metrics &&
+          typeof (opp.metrics as Record<string, unknown>).targetKeyword ===
+            "string"
+            ? ((opp.metrics as Record<string, unknown>).targetKeyword as string)
+            : "";
+        if (!tk || tk.toLowerCase() === opp.query.toLowerCase()) return null;
+        return (
+          <div className="font-mono text-[10px] text-ink-500 mb-2 truncate">
+            <span className="uppercase tracking-wider mr-1">kw:</span>
+            {tk}
+          </div>
+        );
+      })()}
 
       {/* Signals — trending + AI citation gap */}
       {(opp.trending || opp.aiCitationGap) && (

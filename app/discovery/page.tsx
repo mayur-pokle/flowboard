@@ -8,7 +8,9 @@ import {
   Sparkles,
   Archive,
   Undo2,
-  Search as SearchIcon
+  Search as SearchIcon,
+  Wand2,
+  Loader2
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -44,6 +46,55 @@ export default function DiscoveryKanbanPage() {
   >("all");
   const [typeFilter, setTypeFilter] = useState<"all" | OpportunityType>("all");
   const [rejectStack, setRejectStack] = useState<Reject[]>([]);
+
+  // ── Identify Gaps (Gemini-powered) ──
+  const [identifying, setIdentifying] = useState(false);
+  const [identifyStep, setIdentifyStep] = useState(0);
+  const identifySteps = [
+    "Reading your brand context…",
+    "Scanning competitor coverage…",
+    "Comparing against your published library…",
+    "Asking Gemini for the biggest gaps…",
+    "Scoring and queuing into Intake…"
+  ];
+  useEffect(() => {
+    if (!identifying) return;
+    setIdentifyStep(0);
+    const t = setInterval(() => {
+      setIdentifyStep((s) => Math.min(identifySteps.length - 1, s + 1));
+    }, 1800);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [identifying]);
+
+  async function identifyGaps() {
+    setIdentifying(true);
+    try {
+      const res = await fetch("/api/discoveries/identify-gaps", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ count: 10 })
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Could not identify gaps");
+      if (json.provider === "mock") {
+        toast(
+          `Loaded ${json.inserted} sample gaps (no LLM key configured). Add GEMINI_API_KEY to identify real gaps.`,
+          "info"
+        );
+      } else {
+        toast(
+          `${json.inserted} new opportunities identified by ${json.provider}.`,
+          "success"
+        );
+      }
+      await reload();
+    } catch (err) {
+      toast((err as Error).message, "error");
+    } finally {
+      setIdentifying(false);
+    }
+  }
 
   async function load() {
     try {
@@ -244,11 +295,37 @@ export default function DiscoveryKanbanPage() {
             </p>
           </div>
           <div className="flex items-center gap-2">
+            <Button
+              variant="primary"
+              onClick={() => void identifyGaps()}
+              disabled={identifying}
+            >
+              {identifying ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Wand2 className="size-4" />
+              )}
+              {identifying ? "Identifying…" : "Identify gaps"}
+            </Button>
             <Link href="/settings/sources">
               <Button variant="secondary">Manage sources</Button>
             </Link>
           </div>
         </div>
+
+        {identifying ? (
+          <div className="mt-3 rounded-lg bg-brand-50 ring-1 ring-inset ring-brand-200 px-3 py-2 flex items-center gap-3 text-xs">
+            <Loader2 className="size-3.5 text-brand-700 animate-spin shrink-0" />
+            <div className="flex-1 min-w-0">
+              <div className="font-medium text-brand-900 mb-1">
+                Gemini is identifying content gaps for your brand
+              </div>
+              <div className="text-brand-700">
+                {identifySteps[identifyStep]}
+              </div>
+            </div>
+          </div>
+        ) : null}
 
         {/* Search + filters */}
         <div className="flex items-center gap-2 flex-wrap">

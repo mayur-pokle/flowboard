@@ -26,7 +26,10 @@ import type { OpportunityType } from "@/lib/opportunity-classifier";
 export type ProviderName = "openai" | "anthropic" | "gemini" | "mock";
 
 export interface ContentGenInputs {
+  // SEO TARGET KEYWORD to optimize for (2-5 words).
   query: string;
+  // Optional article TITLE for the H1. When omitted, the LLM picks one.
+  articleTitle?: string;
   brief: BriefData;
   opportunityType: OpportunityType;
   // Per-type provider config — pulled from settings before calling.
@@ -97,6 +100,13 @@ function buildPrompt(inputs: ContentGenInputs): string {
   const lines: string[] = [];
   lines.push(`## TARGET KEYWORD\n${query}`);
   lines.push("");
+  if (inputs.articleTitle && inputs.articleTitle !== query) {
+    lines.push(`## PROPOSED ARTICLE TITLE\n${inputs.articleTitle}`);
+    lines.push(
+      `Use this exact title as the H1 unless you have a clearly stronger one.`
+    );
+    lines.push("");
+  }
   lines.push(`## INTENT\n${brief.intent} — ${brief.intentExplanation}`);
   lines.push("");
   lines.push(
@@ -222,9 +232,17 @@ async function callGemini(
 }
 
 // ── Template fallback ──
-function buildTemplate(query: string, brief: BriefData): string {
+function buildTemplate(
+  query: string,
+  brief: BriefData,
+  articleTitle?: string
+): string {
+  const headline =
+    articleTitle && articleTitle.trim()
+      ? articleTitle.trim()
+      : query.charAt(0).toUpperCase() + query.slice(1);
   const lines: string[] = [];
-  lines.push(`# ${query.charAt(0).toUpperCase() + query.slice(1)}`);
+  lines.push(`# ${headline}`);
   lines.push("");
   lines.push(
     `> ⚠️ **This is a template, not AI-generated.** All providers were unavailable or unconfigured. Fill in each [WRITE: ...] block to complete the article.`
@@ -368,7 +386,7 @@ export async function generateDiscoveryContent(
     "No LLM provider configured or all providers failed. Generated a template instead."
   );
   return {
-    markdown: buildTemplate(inputs.query, inputs.brief),
+    markdown: buildTemplate(inputs.query, inputs.brief, inputs.articleTitle),
     metaDescription: null,
     titleVariants: [],
     provider: "mock",

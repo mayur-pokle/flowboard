@@ -74,6 +74,20 @@ export function DetailPanel({ opportunity, onClose, onRefresh }: Props) {
     opportunity.contentChecks
   ]);
 
+  // Auto-fire brief generation the moment the panel opens on a card
+  // that doesn't have one yet. Brief gen is deterministic + < 2s, so
+  // the strategist sees the brief land instead of an empty CTA.
+  // Guarded so it only fires once per opportunity.
+  const [autoTriedFor, setAutoTriedFor] = useState<string | null>(null);
+  useEffect(() => {
+    if (!opportunity.id) return;
+    if (opportunity.briefData) return;
+    if (autoTriedFor === opportunity.id) return;
+    setAutoTriedFor(opportunity.id);
+    void generateBrief();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [opportunity.id, opportunity.briefData]);
+
   async function generateBrief() {
     setBusy("brief");
     try {
@@ -228,9 +242,28 @@ export function DetailPanel({ opportunity, onClose, onRefresh }: Props) {
                 {SOURCE_LABEL[opportunity.source] || opportunity.source}
               </Badge>
             </div>
-            <h2 className="font-mono text-lg font-bold text-ink-900 leading-tight">
+            <h2 className="text-lg font-bold text-ink-900 leading-tight">
               {opportunity.query}
             </h2>
+            {(() => {
+              const tk =
+                opportunity.metrics &&
+                typeof (opportunity.metrics as Record<string, unknown>)
+                  .targetKeyword === "string"
+                  ? ((opportunity.metrics as Record<string, unknown>)
+                      .targetKeyword as string)
+                  : "";
+              if (!tk || tk.toLowerCase() === opportunity.query.toLowerCase())
+                return null;
+              return (
+                <div className="font-mono text-[11px] text-ink-500 mt-1">
+                  <span className="uppercase tracking-wider mr-1">
+                    Target keyword:
+                  </span>
+                  {tk}
+                </div>
+              );
+            })()}
             {opportunity.reason ? (
               <p className="text-xs text-ink-600 mt-1.5 leading-relaxed">
                 {opportunity.reason}
@@ -572,20 +605,36 @@ function BriefTab({
   hasBrief: boolean;
 }) {
   if (!hasBrief) {
+    // The detail panel auto-fires brief generation on open, so this
+    // state is typically the < 2s loading window. Show a skeleton, not
+    // an empty CTA — the user shouldn't have to click "Generate" for
+    // something that happens automatically.
     return (
-      <div className="text-center py-12">
-        <p className="text-sm text-ink-600 mb-4">
-          The brief is generated deterministically — no LLM call required.
-          It should be ready in under 2 seconds.
-        </p>
-        <Button variant="primary" onClick={onGenerate} disabled={busy}>
-          {busy ? (
-            <Loader2 className="size-3.5 animate-spin" />
-          ) : (
-            <Sparkles className="size-3.5" />
-          )}
-          Generate brief
-        </Button>
+      <div className="space-y-3">
+        <div className="inline-flex items-center gap-2 text-xs text-ink-600">
+          <Loader2 className="size-3.5 animate-spin" />
+          {busy
+            ? "Assembling brief from signals…"
+            : "Brief will appear in a moment."}
+        </div>
+        <div className="space-y-2">
+          <div className="h-3 bg-ink-100 rounded animate-pulse w-3/4" />
+          <div className="h-3 bg-ink-100 rounded animate-pulse w-full" />
+          <div className="h-3 bg-ink-100 rounded animate-pulse w-5/6" />
+          <div className="h-3 bg-ink-100 rounded animate-pulse w-1/2" />
+          <div className="h-12" />
+          <div className="h-3 bg-ink-100 rounded animate-pulse w-2/3" />
+          <div className="h-3 bg-ink-100 rounded animate-pulse w-full" />
+          <div className="h-3 bg-ink-100 rounded animate-pulse w-4/5" />
+        </div>
+        {!busy ? (
+          <div className="pt-2">
+            <Button variant="secondary" onClick={onGenerate}>
+              <Sparkles className="size-3.5" />
+              Generate now
+            </Button>
+          </div>
+        ) : null}
       </div>
     );
   }

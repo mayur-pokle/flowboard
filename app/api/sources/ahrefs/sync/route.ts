@@ -1,136 +1,43 @@
 import { NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
-import { db } from "@/db";
-import { sourceConfigs } from "@/db/schema";
 import { withAuth, badRequest, serverError } from "@/lib/api";
-import { decryptJson } from "@/lib/encryption";
-import {
-  fetchOrganicKeywords,
-  type AhrefsCredentials
-} from "@/lib/ahrefs";
-import {
-  getCompetitorDomains,
-  scoreCompetitorKeyword,
-  upsertOpportunities,
-  type UpsertOppInput
-} from "@/lib/discovery-shared";
+import { syncAhrefs } from "@/lib/sync-runners";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const PER_COMPETITOR_LIMIT = 50;
+// POST /api/sources/ahrefs/sync
+// Thin wrapper that delegates to the shared sync-runner so the
+// classifier (intent, AI citation gap, score breakdown) runs on every
+// sync — whether triggered by the cron or by clicking "Sync now" on
+// the Settings → Data sources page.
 
 export const POST = withAuth(async () => {
   try {
-    const [config] = await db
-      .select()
-      .from(sourceConfigs)
-      .where(eq(sourceConfigs.name, "ahrefs"))
-      .limit(1);
-    if (!config || !config.encryptedCredentials) {
-      return badRequest("Ahrefs is not connected. Add your API key first.");
-    }
-    const creds = decryptJson<AhrefsCredentials>(
-      config.encryptedCredentials
-    );
-
-    const { competitors } = await getCompetitorDomains();
-    if (competitors.length === 0) {
-      return badRequest(
-        "Add at least one competitor with a URL in Settings → Brand & APIs first."
+    const res = await syncAhrefs();
+    if (!res.ok) {
+      if (
+        res.error &&
+        /not connected|competitor/.test(res.error.toLowerCase())
+      ) {
+        return badRequest(res.error);
+      }
+      return NextResponse.json(
+        {
+          ok: false,
+          sampled: res.sampled,
+          opportunities: res.opportunities,
+          error: res.error || "Ahrefs sync failed"
+        },
+        { status: 500 }
       );
     }
-
-    let totalSampled = 0;
-    const rows: UpsertOppInput[] = [];
-    const errors: string[] = [];
-
-    for (const c of competitors) {
-      try {
-        const kws = await fetchOrganicKeywords(
-          creds,
-          c.url,
-          PER_COMPETITOR_LIMIT
-        );
-        totalSampled += kws.length;
-        for (const k of kws) {
-          if (k.searchVolume < 50) continue;
-          if (k.position > 30) continue;
-          const score = scoreCompetitorKeyword(
-            k.searchVolume,
-            k.position,
-            k.difficulty
-          );
-          if (score < 25) continue;
-          const reason =
-            `${c.name || c.url} ranks #${k.position.toFixed(0)} · ` +
-            `${k.searchVolume.toLocaleString()} vol/mo` +
-            (typeof k.difficulty === "number"
-              ? ` · KD ${k.difficulty}`
-              : "");
-          rows.push({
-            source: "ahrefs",
-            query: k.keyword,
-            url: k.url || null,
-            metrics: {
-              volume: k.searchVolume,
-              position: k.position,
-              difficulty: k.difficulty,
-              trafficValue: k.trafficValue,
-              competitorDomain: c.url,
-              competitorName: c.name
-            },
-            score,
-            reason,
-            dedupKey: `ahrefs::${stripDomain(c.url)}::${k.keyword.toLowerCase()}`
-          });
-        }
-      } catch (err) {
-        errors.push(`${c.name || c.url}: ${(err as Error).message}`);
-      }
-    }
-
-    const upserted = await upsertOpportunities(rows);
-
-    await db
-      .update(sourceConfigs)
-      .set({
-        lastSyncedAt: new Date(),
-        lastError: errors.length ? errors.join("; ").slice(0, 500) : null,
-        updatedAt: new Date()
-      })
-      .where(eq(sourceConfigs.name, "ahrefs"));
-
     return NextResponse.json({
       ok: true,
-      sampled: totalSampled,
-      opportunities: rows.length,
-      upserted,
-      competitorsProcessed: competitors.length,
-      errors
+      sampled: res.sampled,
+      opportunities: res.opportunities,
+      upserted: res.opportunities
     });
   } catch (err) {
-    try {
-      await db
-        .update(sourceConfigs)
-        .set({
-          status: "error",
-          lastError: (err as Error).message,
-          updatedAt: new Date()
-        })
-        .where(eq(sourceConfigs.name, "ahrefs"));
-    } catch {
-      /* best-effort */
-    }
     return serverError(err);
   }
 });
-
-function stripDomain(input: string): string {
-  return input
-    .replace(/^https?:\/\//i, "")
-    .replace(/^www\./i, "")
-    .replace(/\/.*$/, "")
-    .trim()
-    .toLowerCase();
-}

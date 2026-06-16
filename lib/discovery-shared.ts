@@ -27,6 +27,23 @@ export async function getCompetitorDomains(): Promise<{
   return { ourDomain: s?.websiteUrl || null, competitors: usable };
 }
 
+// All brand-ish names we might want to treat as "navigational" hits in
+// the intent classifier — our own company + every competitor's name.
+export async function getBrandNames(): Promise<string[]> {
+  const [s] = await db
+    .select()
+    .from(settings)
+    .where(eq(settings.id, "workspace"))
+    .limit(1);
+  const comps = await db.select().from(competitors);
+  const names = new Set<string>();
+  if (s?.companyName) names.add(s.companyName.trim());
+  for (const c of comps) {
+    if (c.name) names.add(c.name.trim());
+  }
+  return Array.from(names).filter(Boolean);
+}
+
 export interface UpsertOppInput {
   source: "semrush" | "ahrefs";
   query: string;
@@ -35,6 +52,11 @@ export interface UpsertOppInput {
   score: number;
   reason: string;
   dedupKey: string;
+  // New 4-pillar fields. Optional for backwards-compat with refresh
+  // runner + any older callers, but every fresh sync should set them.
+  intent?: string;
+  aiCitationGap?: boolean;
+  scoreBreakdown?: Record<string, number>;
 }
 
 // Score a competitor keyword: log-scale volume × (penalize-low-positions
@@ -89,7 +111,10 @@ export async function upsertOpportunities(
           score: o.score,
           status: "new",
           reason: o.reason,
-          dedupKey: o.dedupKey
+          dedupKey: o.dedupKey,
+          intent: o.intent,
+          aiCitationGap: o.aiCitationGap ?? false,
+          scoreBreakdown: o.scoreBreakdown
         }))
       )
       .onConflictDoNothing();
@@ -104,6 +129,9 @@ export async function upsertOpportunities(
         score: o.score,
         reason: o.reason,
         url: o.url,
+        intent: o.intent,
+        aiCitationGap: o.aiCitationGap ?? false,
+        scoreBreakdown: o.scoreBreakdown,
         updatedAt: new Date()
       })
       .where(eq(discoveredOpportunities.dedupKey, o.dedupKey));

@@ -13,6 +13,8 @@ import {
   type GSCTokens,
   type GSCMetadata
 } from "@/lib/gsc";
+import { classifyOpportunity } from "@/lib/opportunity-classifier";
+import { getBrandNames } from "@/lib/discovery-shared";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -59,6 +61,7 @@ export const POST = withAuth(async (_user, req) => {
     }
 
     const rows = await fetchSearchAnalytics(tokens, siteUrl, SYNC_DAYS);
+    const brandNames = await getBrandNames();
 
     // Score + filter. Opportunities are rows where there's real demand
     // (impressions ≥ threshold), our CTR is low (headroom exists), and
@@ -72,6 +75,9 @@ export const POST = withAuth(async (_user, req) => {
       score: number;
       reason: string;
       dedupKey: string;
+      intent: string;
+      aiCitationGap: boolean;
+      scoreBreakdown: Record<string, number>;
     };
     // GSC's `dimensions: ["query", "page"]` returns one row per (query,
     // page) pair — the same query showing on two different pages comes
@@ -86,24 +92,16 @@ export const POST = withAuth(async (_user, req) => {
       if (r.ctr > MAX_CTR_FOR_OPPORTUNITY) continue;
       if (r.position < MIN_POSITION || r.position > MAX_POSITION) continue;
 
-      // Score 0-100:
-      // - 50% from impression weight (log scale, capped at 10k)
-      // - 30% from position improvement potential (closer to position 4
-      //   = more headroom we can realistically capture)
-      // - 20% from CTR gap (lower current CTR = bigger upside)
-      const impressionScore = Math.min(
-        50,
-        (Math.log10(Math.max(1, r.impressions)) / Math.log10(10000)) * 50
-      );
-      const positionScore = Math.max(
-        0,
-        30 * (1 - (r.position - MIN_POSITION) / (MAX_POSITION - MIN_POSITION))
-      );
-      const ctrScore = Math.max(
-        0,
-        20 * (1 - r.ctr / MAX_CTR_FOR_OPPORTUNITY)
-      );
-      const score = Math.round(impressionScore + positionScore + ctrScore);
+      // Use the new 4-pillar classifier so the score has a breakdown,
+      // intent, and AI citation gap signal attached.
+      const classified = classifyOpportunity({
+        source: "gsc",
+        query: r.query,
+        brandNames,
+        impressions: r.impressions,
+        position: r.position,
+        ctr: r.ctr
+      });
 
       const reason =
         `${r.impressions.toLocaleString()} impressions @ pos ${r.position.toFixed(1)} · ` +
@@ -127,9 +125,15 @@ export const POST = withAuth(async (_user, req) => {
           ctr: r.ctr,
           position: r.position
         },
-        score,
+        score: classified.totalScore,
         reason,
-        dedupKey
+        dedupKey,
+        intent: classified.intent,
+        aiCitationGap: classified.aiCitationGap,
+        scoreBreakdown: classified.scoreBreakdown as unknown as Record<
+          string,
+          number
+        >
       });
     }
     const ops: Opp[] = Array.from(byKey.values());
@@ -154,7 +158,10 @@ export const POST = withAuth(async (_user, req) => {
             score: o.score,
             status: "new",
             reason: o.reason,
-            dedupKey: o.dedupKey
+            dedupKey: o.dedupKey,
+            intent: o.intent,
+            aiCitationGap: o.aiCitationGap,
+            scoreBreakdown: o.scoreBreakdown
           }))
         )
         .onConflictDoNothing();
@@ -170,6 +177,9 @@ export const POST = withAuth(async (_user, req) => {
           score: o.score,
           reason: o.reason,
           url: o.url,
+          intent: o.intent,
+          aiCitationGap: o.aiCitationGap,
+          scoreBreakdown: o.scoreBreakdown,
           updatedAt: new Date()
         })
         .where(eq(discoveredOpportunities.dedupKey, o.dedupKey));

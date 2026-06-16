@@ -282,8 +282,23 @@ export const discoveredOpportunities = pgTable("discoveredOpportunities", {
   metrics: jsonb("metrics"),
   // 0-100 priority score. Higher = more worth attention.
   score: integer("score").default(0).notNull(),
-  // "new" | "moved" | "dismissed". "moved" → user moved to Kanban; the
-  // source still pulls the row but we hide it from the discovery feed.
+  // Sub-score breakdown that adds up to `score`. Stored so the UI can
+  // explain WHY this is 85 not 60 — the bare number alone creates no
+  // trust. Shape: { gscVelocity, competitorGap, aiCitationGap, conversions }.
+  scoreBreakdown: jsonb("scoreBreakdown"),
+  // Detected search intent — "commercial" | "informational" |
+  // "transactional" | "navigational". Drives content type recommendation
+  // on the Brief page.
+  intent: text("intent"),
+  // True if our heuristic thinks AI engines (Perplexity, Google AI
+  // Overviews, ChatGPT) are likely citing competitors but not us for this
+  // query. Renders as the purple AEO/GEO badge across all three screens.
+  aiCitationGap: boolean("aiCitationGap").default(false).notNull(),
+  // CRM-style pipeline status. "new" → just discovered. "triaging" →
+  // strategist reviewing. "briefed" → brief generated. "in_progress" →
+  // content being written. "published" → article live. "archived" →
+  // dismissed/won't pursue. Replaces the older 3-state model but stays
+  // backwards-compatible with old "moved"/"dismissed" rows.
   status: text("status").default("new").notNull(),
   // Optional one-liner explaining WHY this scored high (UI tooltip).
   reason: text("reason"),
@@ -292,6 +307,24 @@ export const discoveredOpportunities = pgTable("discoveredOpportunities", {
   // Stable dedup key per source so re-syncs UPSERT instead of duplicating.
   // e.g. "gsc::sc-domain:acme.com::month-end close software"
   dedupKey: text("dedupKey").notNull().unique(),
+  // ── Brief + content (the CRM workflow) ──
+  // Deterministically generated brief markdown. Saved here so the brief
+  // page is instant on every revisit. Regenerable on demand.
+  briefMarkdown: text("briefMarkdown"),
+  briefGeneratedAt: timestamp("briefGeneratedAt", { mode: "date" }),
+  // AI-generated article. Auto-creates a Kanban task in Done when first
+  // produced — see linkedTaskId below.
+  contentMarkdown: text("contentMarkdown"),
+  contentGeneratedAt: timestamp("contentGeneratedAt", { mode: "date" }),
+  // Quality signals computed after content generation. Shape:
+  //   { directAnswer: boolean, comparisonTable: boolean,
+  //     cannibalizationOk: boolean, wordCount: number,
+  //     wordCountTarget: number }
+  qualitySignals: jsonb("qualitySignals"),
+  // The Kanban task this opportunity was promoted to (set on first
+  // Generate Content success). Lets the UI deep-link from a card to its
+  // task and back.
+  linkedTaskId: text("linkedTaskId"),
   createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
   updatedAt: timestamp("updatedAt", { mode: "date" }).defaultNow().notNull()
 });

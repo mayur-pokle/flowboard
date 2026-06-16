@@ -162,7 +162,17 @@ const STATEMENTS: string[] = [
     "dedupKey" text NOT NULL UNIQUE,
     "createdAt" timestamp DEFAULT now() NOT NULL,
     "updatedAt" timestamp DEFAULT now() NOT NULL
-  )`
+  )`,
+  // ── discoveredOpportunities: CRM workflow + breakdown columns ──
+  `ALTER TABLE "discoveredOpportunities" ADD COLUMN IF NOT EXISTS "scoreBreakdown" jsonb`,
+  `ALTER TABLE "discoveredOpportunities" ADD COLUMN IF NOT EXISTS "intent" text`,
+  `ALTER TABLE "discoveredOpportunities" ADD COLUMN IF NOT EXISTS "aiCitationGap" boolean NOT NULL DEFAULT false`,
+  `ALTER TABLE "discoveredOpportunities" ADD COLUMN IF NOT EXISTS "briefMarkdown" text`,
+  `ALTER TABLE "discoveredOpportunities" ADD COLUMN IF NOT EXISTS "briefGeneratedAt" timestamp`,
+  `ALTER TABLE "discoveredOpportunities" ADD COLUMN IF NOT EXISTS "contentMarkdown" text`,
+  `ALTER TABLE "discoveredOpportunities" ADD COLUMN IF NOT EXISTS "contentGeneratedAt" timestamp`,
+  `ALTER TABLE "discoveredOpportunities" ADD COLUMN IF NOT EXISTS "qualitySignals" jsonb`,
+  `ALTER TABLE "discoveredOpportunities" ADD COLUMN IF NOT EXISTS "linkedTaskId" text`
 ];
 
 // Run all statements. Each one is wrapped in its own try/catch so a

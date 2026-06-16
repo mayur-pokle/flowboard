@@ -29,10 +29,12 @@ import {
 } from "@/lib/ahrefs";
 import {
   getCompetitorDomains,
+  getBrandNames,
   scoreCompetitorKeyword,
   upsertOpportunities,
   type UpsertOppInput
 } from "@/lib/discovery-shared";
+import { classifyOpportunity } from "@/lib/opportunity-classifier";
 import { db as dbClient } from "@/db";
 import { discoveredOpportunities } from "@/db/schema";
 
@@ -79,6 +81,7 @@ export async function syncGsc(): Promise<SyncResult> {
       GSC_SYNC_DAYS
     );
     out.sampled = rows.length;
+    const brandNames = await getBrandNames();
 
     type Op = {
       id: string;
@@ -89,6 +92,9 @@ export async function syncGsc(): Promise<SyncResult> {
       score: number;
       reason: string;
       dedupKey: string;
+      intent: string;
+      aiCitationGap: boolean;
+      scoreBreakdown: Record<string, number>;
     };
 
     // GSC returns one row per (query, page). Dedupe by query so the
@@ -103,19 +109,14 @@ export async function syncGsc(): Promise<SyncResult> {
       if (r.position < GSC_MIN_POSITION || r.position > GSC_MAX_POSITION)
         continue;
 
-      const impressionScore = Math.min(
-        50,
-        (Math.log10(Math.max(1, r.impressions)) / Math.log10(10000)) * 50
-      );
-      const positionScore = Math.max(
-        0,
-        30 *
-          (1 -
-            (r.position - GSC_MIN_POSITION) /
-              (GSC_MAX_POSITION - GSC_MIN_POSITION))
-      );
-      const ctrScore = Math.max(0, 20 * (1 - r.ctr / GSC_MAX_CTR));
-      const score = Math.round(impressionScore + positionScore + ctrScore);
+      const classified = classifyOpportunity({
+        source: "gsc",
+        query: r.query,
+        brandNames,
+        impressions: r.impressions,
+        position: r.position,
+        ctr: r.ctr
+      });
 
       const dedupKey = `gsc::${meta.siteUrl}::${r.query.toLowerCase()}`;
       const existing = byKey.get(dedupKey);
@@ -132,11 +133,17 @@ export async function syncGsc(): Promise<SyncResult> {
           ctr: r.ctr,
           position: r.position
         },
-        score,
+        score: classified.totalScore,
         reason:
           `${r.impressions.toLocaleString()} impressions @ pos ${r.position.toFixed(1)} · ` +
           `${(r.ctr * 100).toFixed(1)}% CTR`,
-        dedupKey
+        dedupKey,
+        intent: classified.intent,
+        aiCitationGap: classified.aiCitationGap,
+        scoreBreakdown: classified.scoreBreakdown as unknown as Record<
+          string,
+          number
+        >
       });
     }
     const ops = Array.from(byKey.values());
@@ -157,7 +164,10 @@ export async function syncGsc(): Promise<SyncResult> {
             score: o.score,
             status: "new",
             reason: o.reason,
-            dedupKey: o.dedupKey
+            dedupKey: o.dedupKey,
+            intent: o.intent,
+            aiCitationGap: o.aiCitationGap,
+            scoreBreakdown: o.scoreBreakdown
           }))
         )
         .onConflictDoNothing();
@@ -170,6 +180,9 @@ export async function syncGsc(): Promise<SyncResult> {
           score: o.score,
           reason: o.reason,
           url: o.url,
+          intent: o.intent,
+          aiCitationGap: o.aiCitationGap,
+          scoreBreakdown: o.scoreBreakdown,
           updatedAt: new Date()
         })
         .where(eq(discoveredOpportunities.dedupKey, o.dedupKey));
@@ -240,6 +253,10 @@ async function syncCompetitorSource(
 
     const rows: UpsertOppInput[] = [];
     const errors: string[] = [];
+    const brandNames = await getBrandNames();
+    // Count how many competitors flag each query so we can boost
+    // multi-competitor signals via the classifier's competitorCount.
+    const queryCompetitorCount = new Map<string, number>();
 
     for (const c of competitors) {
       try {
@@ -280,12 +297,29 @@ async function syncCompetitorSource(
         for (const k of kws) {
           if (k.searchVolume < 50) continue;
           if (k.position > 30) continue;
-          const score = scoreCompetitorKeyword(
+          // Quick gate using the old scorer so we don't bother
+          // classifying noise — the classifier itself does the real
+          // scoring below.
+          const gate = scoreCompetitorKeyword(
             k.searchVolume,
             k.position,
             k.difficulty
           );
-          if (score < 25) continue;
+          if (gate < 20) continue;
+          const qKey = k.keyword.toLowerCase().trim();
+          queryCompetitorCount.set(
+            qKey,
+            (queryCompetitorCount.get(qKey) || 0) + 1
+          );
+          const classified = classifyOpportunity({
+            source: sourceName,
+            query: k.keyword,
+            brandNames,
+            volume: k.searchVolume,
+            position: k.position,
+            difficulty: k.difficulty,
+            competitorCount: queryCompetitorCount.get(qKey)
+          });
           const reason =
             `${c.name || c.url} ranks #${k.position.toFixed(0)} · ` +
             `${k.searchVolume.toLocaleString()} vol/mo` +
@@ -315,9 +349,15 @@ async function syncCompetitorSource(
               competitorDomain: c.url,
               competitorName: c.name
             },
-            score,
+            score: classified.totalScore,
             reason,
-            dedupKey: `${sourceName}::${stripDomain(c.url)}::${k.keyword.toLowerCase()}`
+            dedupKey: `${sourceName}::${stripDomain(c.url)}::${k.keyword.toLowerCase()}`,
+            intent: classified.intent,
+            aiCitationGap: classified.aiCitationGap,
+            scoreBreakdown: classified.scoreBreakdown as unknown as Record<
+              string,
+              number
+            >
           });
         }
       } catch (err) {

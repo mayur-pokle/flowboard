@@ -3,6 +3,7 @@ import { desc, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { settings, competitors } from "@/db/schema";
 import { withAuth, serverError } from "@/lib/api";
+import { ensureSchema, isSchemaError } from "@/lib/migrate";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -43,13 +44,42 @@ async function ensureRow() {
   return inserted;
 }
 
+// Helper that runs `fn`, and if it fails with a schema-drift error
+// (e.g. column or table doesn't exist on the live DB), runs the
+// idempotent migrate routine and retries once. This makes the Settings
+// page self-heal after a schema change ships without the operator
+// needing to remember to run `db:push`.
+async function withSchemaSelfHeal<T>(fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch (err) {
+    if (!isSchemaError(err)) throw err;
+    console.warn(
+      "[settings] schema drift detected, running auto-migrate:",
+      (err as Error).message
+    );
+    await ensureSchema({ force: true });
+    return await fn();
+  }
+}
+
 export const GET = withAuth(async () => {
   try {
-    const row = await ensureRow();
-    const comps = await db
-      .select()
-      .from(competitors)
-      .orderBy(desc(competitors.createdAt));
+    // Eager pass: catches the live DB up to the latest schema BEFORE we
+    // query, so a stale Neon won't blow up the very first read after a
+    // deploy. After the first successful call per server lifetime this
+    // is a no-op (see alreadyRan in lib/migrate.ts).
+    await ensureSchema().catch((e) =>
+      console.warn("[settings] eager migrate failed (continuing):", e)
+    );
+    const { row, comps } = await withSchemaSelfHeal(async () => {
+      const row = await ensureRow();
+      const comps = await db
+        .select()
+        .from(competitors)
+        .orderBy(desc(competitors.createdAt));
+      return { row, comps };
+    });
     // AI keys + Slack are NOT exposed via the DB — they live in server env.
     return NextResponse.json({
       settings: { ...row, competitors: comps },
@@ -68,7 +98,6 @@ export const GET = withAuth(async () => {
 
 export const PATCH = withAuth(async (_user, req) => {
   try {
-    await ensureRow();
     const body = await req.json();
     const allowed = [
       "companyName",
@@ -94,10 +123,13 @@ export const PATCH = withAuth(async (_user, req) => {
     if (body.lastGeneratedAt) {
       patch.lastGeneratedAt = new Date(body.lastGeneratedAt);
     }
-    await db
-      .update(settings)
-      .set(patch)
-      .where(eq(settings.id, SINGLETON_ID));
+    await withSchemaSelfHeal(async () => {
+      await ensureRow();
+      await db
+        .update(settings)
+        .set(patch)
+        .where(eq(settings.id, SINGLETON_ID));
+    });
     return NextResponse.json({ ok: true });
   } catch (err) {
     return serverError(err);

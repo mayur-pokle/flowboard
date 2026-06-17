@@ -20,7 +20,8 @@ import {
   TrendingUp,
   TrendingDown,
   Minus,
-  ExternalLink as ExternalLinkIcon
+  ExternalLink as ExternalLinkIcon,
+  AlertTriangle
 } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { Button } from "@/components/ui/Button";
@@ -31,6 +32,12 @@ import type { GeneratedContent, Priority, Status, Task } from "@/lib/types";
 import { ContentEditor } from "@/components/ContentEditor";
 import { CommentsSection } from "@/components/CommentsSection";
 import { PublishPromptSection } from "@/components/PublishPromptSection";
+import {
+  PipelinePanel,
+  type PanelHeaderBadge,
+  type PanelTab
+} from "@/components/pipeline/PipelinePanel";
+import { cn } from "@/lib/utils";
 
 const STATUS_LABELS: Record<Status, string> = {
   todo: "To Do",
@@ -38,6 +45,28 @@ const STATUS_LABELS: Record<Status, string> = {
   done: "Done"
 };
 const PRIORITIES: Priority[] = ["Low", "Medium", "High"];
+
+const PRIORITY_BADGE_CLASS: Record<Priority, string> = {
+  High: "bg-rose-50 text-rose-700 ring-1 ring-inset ring-rose-200",
+  Medium: "bg-amber-50 text-amber-800 ring-1 ring-inset ring-amber-200",
+  Low: "bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-200"
+};
+
+const TYPE_BADGE_CLASS: Record<string, string> = {
+  Calculator: "bg-violet-50 text-violet-700 ring-1 ring-inset ring-violet-200",
+  Template: "bg-sky-50 text-sky-700 ring-1 ring-inset ring-sky-200",
+  Guide: "bg-blue-50 text-blue-700 ring-1 ring-inset ring-blue-200",
+  Whitepaper: "bg-indigo-50 text-indigo-700 ring-1 ring-inset ring-indigo-200",
+  Checklist: "bg-teal-50 text-teal-700 ring-1 ring-inset ring-teal-200",
+  Framework: "bg-fuchsia-50 text-fuchsia-700 ring-1 ring-inset ring-fuchsia-200"
+};
+
+// Convert task.topic.priority to a 0-100 score for the speedometer.
+function priorityToScore(p: Priority): number {
+  if (p === "High") return 85;
+  if (p === "Medium") return 60;
+  return 30;
+}
 
 export function CardDetailPanel({ task }: { task: Task }) {
   const settings = useStore((s) => s.settings);
@@ -131,155 +160,254 @@ export function CardDetailPanel({ task }: { task: Task }) {
     }
   }
 
-  return (
-    <div className="fixed inset-y-0 right-0 z-40 w-full max-w-[640px] bg-white border-l border-ink-200 shadow-panel flex flex-col">
-      {/* Header */}
-      <div className="px-6 h-14 flex items-center justify-between border-b border-ink-200 shrink-0">
-        <div className="flex items-center gap-2 min-w-0">
-          <TypeBadge value={task.topic.contentType} />
-          <span className="text-xs text-ink-500 truncate">
-            Updated {formatDate(task.updatedAt)}
-          </span>
-        </div>
-        <Button
-          variant="ghost"
-          onClick={() => selectTask(null)}
-          aria-label="Close panel"
+  // ── Tab state ──
+  // Defaults to Content when a draft exists (most users open the panel
+  // to inspect the draft). Otherwise lands on Overview.
+  const [activeTab, setActiveTab] = useState<
+    "overview" | "content" | "performance" | "comments"
+  >(task.content ? "content" : "overview");
+
+  // ── Panel chassis props ──
+  const badges: PanelHeaderBadge[] = [
+    {
+      label: task.topic.contentType,
+      className:
+        TYPE_BADGE_CLASS[task.topic.contentType] ||
+        "bg-ink-100 text-ink-700 ring-1 ring-inset ring-ink-200"
+    },
+    {
+      label: task.topic.priority,
+      className: PRIORITY_BADGE_CLASS[task.topic.priority]
+    },
+    {
+      label: STATUS_LABELS[task.status],
+      className: "bg-ink-100 text-ink-700 ring-1 ring-inset ring-ink-200"
+    }
+  ];
+
+  const speedometerValue = priorityToScore(task.topic.priority);
+  const impact = task.topic.impactScore ?? task.topic.priorityScore;
+  const novelty = task.topic.noveltyScore ?? 100;
+  const cannibalizationClarity = task.topic.overlapWithUrl ? 4 : 10;
+
+  // Signals row (under the score block) — mirror the Discovery surface.
+  const signalsBlock = (
+    <>
+      {task.contentStatus === "completed" ? (
+        <span className="badge text-[10px] inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-200">
+          <CheckCircle2 className="size-3" />
+          Draft ready
+        </span>
+      ) : null}
+      {task.contentStatus === "generating" ? (
+        <span className="badge text-[10px] inline-flex items-center gap-1 bg-brand-50 text-brand-700 ring-1 ring-inset ring-brand-200">
+          <Loader2 className="size-3 animate-spin" />
+          Generating
+        </span>
+      ) : null}
+      {task.topic.overlapWithUrl ? (
+        <span
+          className="badge text-[10px] inline-flex items-center gap-1 bg-amber-50 text-amber-800 ring-1 ring-inset ring-amber-200"
+          title={task.topic.overlapWithTitle || task.topic.overlapWithUrl}
         >
-          <X className="size-4" />
-        </Button>
-      </div>
+          <AlertTriangle className="size-3" />
+          Cannibalization risk
+        </span>
+      ) : null}
+    </>
+  );
 
-      <div className="flex-1 overflow-auto scrollbar-thin">
-        {/* Title */}
-        <div className="px-6 py-5 border-b border-ink-100">
-          <h1 className="text-xl font-semibold text-ink-900 leading-snug">
-            {task.topic.title}
-          </h1>
-          <div className="text-xs text-ink-500 mt-2 font-mono">
-            {task.topic.targetKeyword}
-          </div>
-        </div>
+  // ── Tab definitions ──
+  const tabs: PanelTab[] = [
+    {
+      id: "overview",
+      label: "Overview",
+      render: () => renderOverviewTab()
+    },
+    {
+      id: "content",
+      label: "Content",
+      indicator: task.content ? (
+        <CheckCircle2 className="size-3 text-emerald-500" />
+      ) : null,
+      render: () => renderContentTab()
+    },
+    {
+      id: "performance",
+      label: "Performance",
+      indicator: task.publishedUrlMetrics ? (
+        <CheckCircle2 className="size-3 text-emerald-500" />
+      ) : null,
+      render: () => renderPerformanceTab()
+    },
+    {
+      id: "comments",
+      label: "Comments",
+      indicator:
+        commentCount > 0 ? (
+          <span className="text-[10px] bg-ink-100 text-ink-700 rounded-full px-1.5 tabular-nums">
+            {commentCount}
+          </span>
+        ) : null,
+      render: () => renderCommentsTab()
+    }
+  ];
 
-        {/* Overview */}
-        <Section title="Overview">
-          <Field label="Status">
+  // ── Tab render functions ──
+  function renderOverviewTab() {
+    return (
+      <div className="space-y-4">
+        <Field label="Status">
+          <select
+            value={task.status}
+            onChange={(e) => setTaskStatus(task.id, e.target.value as Status)}
+            className="input !w-auto !py-2"
+          >
+            {(["todo", "in_progress", "done"] as Status[]).map((s) => (
+              <option key={s} value={s}>
+                {STATUS_LABELS[s]}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Priority">
+          <div className="flex items-center gap-2">
             <select
-              value={task.status}
+              value={task.topic.priority}
               onChange={(e) =>
-                setTaskStatus(task.id, e.target.value as Status)
+                setTaskPriority(task.id, e.target.value as Priority)
               }
               className="input !w-auto !py-2"
             >
-              {(["todo", "in_progress", "done"] as Status[]).map((s) => (
-                <option key={s} value={s}>
-                  {STATUS_LABELS[s]}
+              {PRIORITIES.map((p) => (
+                <option key={p} value={p}>
+                  {p}
                 </option>
               ))}
             </select>
-          </Field>
-          <Field label="Priority">
-            <div className="flex items-center gap-2">
-              <select
-                value={task.topic.priority}
-                onChange={(e) =>
-                  setTaskPriority(task.id, e.target.value as Priority)
-                }
-                className="input !w-auto !py-2"
+            <Badge tone="info">{task.topic.priorityScore}/100</Badge>
+          </div>
+        </Field>
+        <Field label="Search intent">{task.topic.searchIntent}</Field>
+        <Field label="Suggested CTA">{task.topic.suggestedCta}</Field>
+        <Field label="Estimated effort">{task.topic.estimatedEffort}</Field>
+        <Field label="Tags">
+          <div className="flex items-center gap-1 flex-wrap">
+            {task.tags.map((tag) => (
+              <button
+                key={tag}
+                onClick={() => removeTaskTag(task.id, tag)}
+                className="badge bg-ink-100 text-ink-700 ring-1 ring-inset ring-ink-200 hover:bg-rose-50 hover:text-rose-700 hover:ring-rose-200"
+                title="Click to remove"
               >
-                {PRIORITIES.map((p) => (
-                  <option key={p} value={p}>
-                    {p}
-                  </option>
-                ))}
-              </select>
-              <Badge tone="info">{task.topic.priorityScore}/100</Badge>
-            </div>
-          </Field>
-          <Field label="Search intent">{task.topic.searchIntent}</Field>
-          <Field label="Suggested CTA">{task.topic.suggestedCta}</Field>
-          <Field label="Estimated effort">{task.topic.estimatedEffort}</Field>
-          <Field label="Tags">
-            <div className="flex items-center gap-1 flex-wrap">
-              {task.tags.map((tag) => (
-                <button
-                  key={tag}
-                  onClick={() => removeTaskTag(task.id, tag)}
-                  className="badge bg-ink-100 text-ink-700 ring-1 ring-inset ring-ink-200 hover:bg-rose-50 hover:text-rose-700 hover:ring-rose-200"
-                  title="Click to remove"
-                >
-                  {tag}
-                  <X className="size-3" />
-                </button>
-              ))}
-              <input
-                type="text"
-                value={tagInput}
-                onChange={(e) => setTagInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && tagInput.trim()) {
-                    e.preventDefault();
-                    addTaskTag(task.id, tagInput.trim());
-                    setTagInput("");
-                  }
-                }}
-                placeholder="Add tag…"
-                className="input !w-32 !py-1 !px-2 text-xs"
-              />
-            </div>
-          </Field>
-        </Section>
+                {tag}
+                <X className="size-3" />
+              </button>
+            ))}
+            <input
+              type="text"
+              value={tagInput}
+              onChange={(e) => setTagInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && tagInput.trim()) {
+                  e.preventDefault();
+                  addTaskTag(task.id, tagInput.trim());
+                  setTagInput("");
+                }
+              }}
+              placeholder="Add tag…"
+              className="input !w-32 !py-1 !px-2 text-xs"
+            />
+          </div>
+        </Field>
 
-        {/* Opportunity intelligence */}
-        <Section title="Opportunity intelligence">
+        {/* Opportunity intelligence — moved under Overview */}
+        <div className="pt-3 border-t border-ink-100 space-y-3">
+          <h3 className="text-[10px] uppercase tracking-wider text-ink-500">
+            Opportunity intelligence
+          </h3>
           <Field label="Why this matters">{task.topic.whyOpportunity}</Field>
           {task.topic.competitorGap ? (
             <Field label="Competitor gap">{task.topic.competitorGap}</Field>
           ) : null}
           {task.topic.rankingPotential ? (
-            <Field label="Ranking potential">{task.topic.rankingPotential}</Field>
+            <Field label="Ranking potential">
+              {task.topic.rankingPotential}
+            </Field>
           ) : null}
           {task.topic.businessImpact ? (
             <Field label="Business impact">{task.topic.businessImpact}</Field>
           ) : null}
-        </Section>
+        </div>
 
-        {/* Performance — live GSC metrics for the published URL */}
-        <Section title="Performance">
-          <PerformanceSection
-            task={task}
-            onUrlChange={(url) => setTaskPublishedUrl(task.id, url)}
-            onRefresh={async () => {
-              try {
-                const res = await fetchTaskPerformance(task.id);
-                toast(
-                  res.hasData
-                    ? "Performance refreshed from GSC"
-                    : "No GSC data found for this URL yet — it may take a few days after publishing.",
-                  res.hasData ? "success" : "info"
-                );
-              } catch (err) {
-                toast((err as Error).message, "error");
-              }
-            }}
-          />
-        </Section>
+        <div className="pt-3 border-t border-ink-100 text-[11px] text-ink-500">
+          Updated {formatDate(task.updatedAt)}
+        </div>
+      </div>
+    );
+  }
 
-        {/* Content generation status */}
-        <Section title="Content generation">
-          <ContentStatusRow
-            status={task.contentStatus}
-            onGenerate={handleGenerate}
-            wordCount={task.content?.wordCount}
-          />
-        </Section>
+  function renderContentTab() {
+    return (
+      <div className="space-y-4">
+        <ContentStatusRow
+          status={task.contentStatus}
+          onGenerate={handleGenerate}
+          wordCount={task.content?.wordCount}
+        />
 
-        {/* Generated content */}
+        {/* Primary actions */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button
+            variant="primary"
+            loading={task.contentStatus === "generating"}
+            onClick={handleGenerate}
+          >
+            {task.content ? (
+              <>
+                <RefreshCw className="size-4" />
+                Regenerate
+              </>
+            ) : (
+              <>
+                <Sparkles className="size-4" />
+                Generate content
+              </>
+            )}
+          </Button>
+          {task.content ? (
+            <>
+              <Button
+                variant="secondary"
+                onClick={async () => {
+                  await copyToClipboard(task.content!.body);
+                  toast("Copied markdown to clipboard", "success");
+                }}
+              >
+                <Copy className="size-4" />
+                Copy
+              </Button>
+              <Button variant="secondary" onClick={() => exportToDocs(task)}>
+                <Download className="size-4" />
+                Export
+              </Button>
+            </>
+          ) : null}
+        </div>
+
+        {/* Generated content body */}
         {task.content ? (
-          <Section
-            title={editingContent ? "Editing content" : "Generated content"}
-            right={
-              editingContent ? null : (
+          <div
+            className={cn(
+              "border border-ink-200 rounded-lg p-3 bg-ink-50/40",
+              editingContent && "p-0 bg-white"
+            )}
+          >
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-semibold text-ink-900">
+                {editingContent ? "Editing content" : "Generated content"}
+              </span>
+              {!editingContent ? (
                 <Button
                   variant="secondary"
                   onClick={() => setEditingContent(true)}
@@ -288,9 +416,8 @@ export function CardDetailPanel({ task }: { task: Task }) {
                   <Pencil className="size-4" />
                   Edit
                 </Button>
-              )
-            }
-          >
+              ) : null}
+            </div>
             {editingContent ? (
               <ContentEditor
                 content={task.content}
@@ -320,7 +447,7 @@ export function CardDetailPanel({ task }: { task: Task }) {
                     {task.content.metaDescription}
                   </ReadField>
                 </div>
-                <div className="prose-body card p-5 max-h-[480px] overflow-auto scrollbar-thin">
+                <div className="prose-body card p-4 max-h-[480px] overflow-auto scrollbar-thin">
                   <RenderMarkdown text={task.content.body} />
                 </div>
 
@@ -388,98 +515,91 @@ export function CardDetailPanel({ task }: { task: Task }) {
                     </ul>
                   </CollapsibleField>
                 ) : null}
-
-                {/* Publish prompt — copy-paste into Claude Desktop with
-                    the Webflow MCP connector enabled. Handles both
-                    publishing and internal linking. */}
-                <div className="mt-4">
-                  <PublishPromptSection task={task} />
-                </div>
               </>
             )}
-          </Section>
+          </div>
         ) : null}
-
-        {/* Comments / remarks */}
-        <Section
-          title="Comments"
-          right={
-            commentCount > 0 ? (
-              <Badge tone="neutral" className="gap-1">
-                <MessageSquare className="size-3" />
-                {commentCount}
-              </Badge>
-            ) : null
-          }
-        >
-          <CommentsSection taskId={task.id} />
-        </Section>
       </div>
+    );
+  }
 
-      {/* Actions footer */}
-      <div className="px-6 py-3 border-t border-ink-200 bg-white shrink-0 flex items-center justify-between gap-2 flex-wrap">
-        <div className="flex items-center gap-2">
-          <Button
-            variant="primary"
-            loading={task.contentStatus === "generating"}
-            onClick={handleGenerate}
-          >
-            {task.content ? (
-              <>
-                <RefreshCw className="size-4" />
-                Regenerate
-              </>
-            ) : (
-              <>
-                <Sparkles className="size-4" />
-                Generate content
-              </>
-            )}
-          </Button>
-          {task.content ? (
-            <>
-              <Button
-                variant="secondary"
-                onClick={async () => {
-                  await copyToClipboard(task.content!.body);
-                  toast("Copied markdown to clipboard", "success");
-                }}
-              >
-                <Copy className="size-4" />
-                Copy
-              </Button>
-              <Button
-                variant="secondary"
-                onClick={() => exportToDocs(task)}
-              >
-                <Download className="size-4" />
-                Export
-              </Button>
-            </>
-          ) : null}
-        </div>
-        <Button
-          variant="ghost"
-          onClick={() => {
-            if (confirm("Delete this task? This cannot be undone.")) {
-              deleteTask(task.id);
-              selectTask(null);
-              toast("Task deleted", "info");
+  function renderPerformanceTab() {
+    return (
+      <div className="space-y-4">
+        <PerformanceSection
+          task={task}
+          onUrlChange={(url) => setTaskPublishedUrl(task.id, url)}
+          onRefresh={async () => {
+            try {
+              const res = await fetchTaskPerformance(task.id);
+              toast(
+                res.hasData
+                  ? "Performance refreshed from GSC"
+                  : "No GSC data found for this URL yet — it may take a few days after publishing.",
+                res.hasData ? "success" : "info"
+              );
+            } catch (err) {
+              toast((err as Error).message, "error");
             }
           }}
-          className="!text-rose-600 hover:!bg-rose-50"
-        >
-          <Trash2 className="size-4" />
-          Delete
-        </Button>
+        />
+        {task.content ? (
+          <div className="pt-4 border-t border-ink-100">
+            <PublishPromptSection task={task} />
+          </div>
+        ) : null}
       </div>
-    </div>
+    );
+  }
+
+  function renderCommentsTab() {
+    return <CommentsSection taskId={task.id} />;
+  }
+
+  // ── Shared chassis ──
+  return (
+    <PipelinePanel
+      title={task.topic.title}
+      subline={{ label: "kw", value: task.topic.targetKeyword }}
+      badges={badges}
+      score={{
+        value: speedometerValue,
+        label: "Priority",
+        priorityLabel: task.topic.priority,
+        bars: [
+          { label: "Impact", value: impact, max: 100 },
+          {
+            label: "Novelty",
+            value: novelty,
+            max: 100,
+            tone: novelty >= 70 ? "good" : "warn"
+          },
+          { label: "Priority score", value: task.topic.priorityScore, max: 100 },
+          {
+            label: "Cannibalization clarity",
+            value: cannibalizationClarity,
+            max: 10,
+            tone: cannibalizationClarity >= 7 ? "good" : "warn"
+          }
+        ]
+      }}
+      signals={signalsBlock}
+      tabs={tabs}
+      activeTabId={activeTab}
+      onTabChange={(id) =>
+        setActiveTab(id as "overview" | "content" | "performance" | "comments")
+      }
+      onClose={() => selectTask(null)}
+      onDelete={() => {
+        if (confirm("Delete this task? This cannot be undone.")) {
+          deleteTask(task.id);
+          selectTask(null);
+          toast("Task deleted", "info");
+        }
+      }}
+    />
   );
 }
-
-// ── PerformanceSection ────────────────────────────────────────────────
-// Live GSC metrics for the task's publishedUrl. Empty state when no URL
-// is set yet. Delta arrows for each metric vs the previous 28d period.
 
 function PerformanceSection({
   task,

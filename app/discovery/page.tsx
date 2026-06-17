@@ -8,30 +8,70 @@ import {
   Sparkles,
   Archive,
   Undo2,
-  Search as SearchIcon,
   Wand2,
   Loader2,
-  Trash2
+  Trash2,
+  ChevronRight,
+  CheckCircle2,
+  AlertTriangle
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { toast } from "@/components/Toast";
-import { OpportunityCard } from "@/components/discovery/OpportunityCard";
 import { DetailPanel } from "@/components/discovery/DetailPanel";
+import {
+  PipelineCard,
+  pickScoreTone,
+  SignalIcons
+} from "@/components/pipeline/PipelineCard";
+import { PipelineColumn } from "@/components/pipeline/PipelineColumn";
+import {
+  PipelineTopBar,
+  FilterPill
+} from "@/components/pipeline/PipelineTopBar";
 import {
   COLUMN_LABEL,
   COLUMN_ORDER,
   type KanbanColumn,
   TYPE_LABEL,
-  TYPE_BADGE_CLASS
+  TYPE_BADGE_CLASS,
+  PRIORITY_LABEL,
+  PRIORITY_BADGE_CLASS,
+  SOURCE_LABEL,
+  SOURCE_TONE,
+  AI_CITATION_BADGE_CLASS,
+  TRENDING_BADGE_CLASS
 } from "@/components/discovery/tokens";
 import type { Opportunity } from "@/components/discovery/types";
 import type { OpportunityType } from "@/lib/opportunity-classifier";
 import { cn } from "@/lib/utils";
 
-// In-session undo stack for rejected cards. Lives in component state
-// (not localStorage) per spec: rejection is recoverable in session only.
+// dnd-kit
+import {
+  DndContext,
+  DragEndEvent,
+  DragOverlay,
+  DragStartEvent,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  closestCenter,
+  useDraggable
+} from "@dnd-kit/core";
+
 type Reject = { id: string; query: string };
+
+// Map our kanban columns to dnd droppable ids. Intake is NOT droppable
+// (cards land via Identify Gaps, leave via Accept/Reject). The other
+// three columns are.
+const DROPPABLE_COLUMNS: KanbanColumn[] = ["new", "in_progress", "done"];
+
+const COLUMN_TONE: Record<KanbanColumn, "violet" | "ink" | "brand" | "emerald"> = {
+  intake: "violet",
+  new: "ink",
+  in_progress: "brand",
+  done: "emerald"
+};
 
 export default function DiscoveryKanbanPage() {
   const [items, setItems] = useState<Opportunity[]>([]);
@@ -47,26 +87,43 @@ export default function DiscoveryKanbanPage() {
   >("all");
   const [typeFilter, setTypeFilter] = useState<"all" | OpportunityType>("all");
   const [rejectStack, setRejectStack] = useState<Reject[]>([]);
+  const [activeDragId, setActiveDragId] = useState<string | null>(null);
 
-  // ── Identify Gaps (Gemini-powered) ──
-  const [identifying, setIdentifying] = useState(false);
-  const [identifyStep, setIdentifyStep] = useState(0);
-  const identifySteps = [
-    "Reading your brand context…",
-    "Scanning competitor coverage…",
-    "Comparing against your published library…",
-    "Asking Gemini for the biggest gaps…",
-    "Scoring and queuing into Intake…"
-  ];
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
+  );
+
+  async function load() {
+    try {
+      const res = await fetch("/api/discoveries?includeRejected=true");
+      if (!res.ok) throw new Error("Could not load opportunities");
+      const json = await res.json();
+      const all: Opportunity[] = json.opportunities || [];
+      setItems(all.filter((o) => o.kanbanColumn !== "rejected"));
+      setRejected(all.filter((o) => o.kanbanColumn === "rejected"));
+      setSampleCount(json.sampleCount || 0);
+    } catch (err) {
+      toast((err as Error).message, "error");
+    } finally {
+      setLoading(false);
+    }
+  }
+  async function reload() {
+    try {
+      const res = await fetch("/api/discoveries?includeRejected=true");
+      const json = await res.json();
+      const all: Opportunity[] = json.opportunities || [];
+      setItems(all.filter((o) => o.kanbanColumn !== "rejected"));
+      setRejected(all.filter((o) => o.kanbanColumn === "rejected"));
+      setSampleCount(json.sampleCount || 0);
+    } catch (err) {
+      toast((err as Error).message, "error");
+    }
+  }
   useEffect(() => {
-    if (!identifying) return;
-    setIdentifyStep(0);
-    const t = setInterval(() => {
-      setIdentifyStep((s) => Math.min(identifySteps.length - 1, s + 1));
-    }, 1800);
-    return () => clearInterval(t);
+    void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [identifying]);
+  }, []);
 
   // ── Clear all ──
   const [clearing, setClearing] = useState(false);
@@ -94,6 +151,26 @@ export default function DiscoveryKanbanPage() {
       setClearing(false);
     }
   }
+
+  // ── Identify Gaps ──
+  const [identifying, setIdentifying] = useState(false);
+  const [identifyStep, setIdentifyStep] = useState(0);
+  const identifySteps = [
+    "Reading your brand context…",
+    "Scanning competitor coverage…",
+    "Comparing against your published library…",
+    "Asking Gemini for the biggest gaps…",
+    "Scoring and queuing into Intake…"
+  ];
+  useEffect(() => {
+    if (!identifying) return;
+    setIdentifyStep(0);
+    const t = setInterval(() => {
+      setIdentifyStep((s) => Math.min(identifySteps.length - 1, s + 1));
+    }, 1800);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [identifying]);
 
   async function identifyGaps() {
     setIdentifying(true);
@@ -124,42 +201,7 @@ export default function DiscoveryKanbanPage() {
     }
   }
 
-  async function load() {
-    try {
-      const res = await fetch("/api/discoveries?includeRejected=true");
-      if (!res.ok) throw new Error("Could not load opportunities");
-      const json = await res.json();
-      const all: Opportunity[] = json.opportunities || [];
-      setItems(all.filter((o) => o.kanbanColumn !== "rejected"));
-      setRejected(all.filter((o) => o.kanbanColumn === "rejected"));
-      setSampleCount(json.sampleCount || 0);
-      // No auto-seeding on empty — the strategist starts from a clean
-      // slate and uses "Identify gaps" (Gemini) or connected sources
-      // to populate the board. An empty board is a deliberate state.
-    } catch (err) {
-      toast((err as Error).message, "error");
-    } finally {
-      setLoading(false);
-    }
-  }
-  async function reload() {
-    try {
-      const res = await fetch("/api/discoveries?includeRejected=true");
-      const json = await res.json();
-      const all: Opportunity[] = json.opportunities || [];
-      setItems(all.filter((o) => o.kanbanColumn !== "rejected"));
-      setRejected(all.filter((o) => o.kanbanColumn === "rejected"));
-      setSampleCount(json.sampleCount || 0);
-    } catch (err) {
-      toast((err as Error).message, "error");
-    }
-  }
-  useEffect(() => {
-    void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Filtering — additive: search + signal + type
+  // ── Filtering ──
   const filtered = useMemo(() => {
     return items.filter((o) => {
       if (query.trim()) {
@@ -174,10 +216,7 @@ export default function DiscoveryKanbanPage() {
       }
       if (signalFilter === "trending" && !o.trending) return false;
       if (signalFilter === "ai-gap" && !o.aiCitationGap) return false;
-      if (
-        signalFilter === "both" &&
-        (!o.trending || !o.aiCitationGap)
-      )
+      if (signalFilter === "both" && (!o.trending || !o.aiCitationGap))
         return false;
       if (typeFilter !== "all" && o.opportunityType !== typeFilter)
         return false;
@@ -208,11 +247,10 @@ export default function DiscoveryKanbanPage() {
     [items, openId]
   );
 
-  // ── Pipeline actions (optimistic where safe) ──
+  // ── Pipeline actions ──
   async function handleAccept(opp: Opportunity) {
     setBusyId(opp.id);
     try {
-      // Move card immediately (optimistic).
       setItems((prev) =>
         prev.map((o) =>
           o.id === opp.id ? { ...o, kanbanColumn: "new" } : o
@@ -222,13 +260,10 @@ export default function DiscoveryKanbanPage() {
         method: "POST"
       });
       if (!accRes.ok) throw new Error("Accept failed");
-      // Kick off brief generation in the background.
       fetch(`/api/discoveries/${opp.id}/brief`, { method: "POST" })
         .then((r) => r.json())
         .then(() => reload())
-        .catch(() => {
-          /* brief comes from open in detail panel too */
-        });
+        .catch(() => {});
       toast("Moved to New · brief generating…", "success");
     } catch (err) {
       toast((err as Error).message, "error");
@@ -296,30 +331,49 @@ export default function DiscoveryKanbanPage() {
     }
   }
 
-  function handleOpenDetail(oppId: string) {
-    setOpenId(oppId);
+  // ── Drag-and-drop ──
+  function handleDragStart(e: DragStartEvent) {
+    setActiveDragId(String(e.active.id));
   }
+  async function handleDragEnd(e: DragEndEvent) {
+    setActiveDragId(null);
+    const overId = e.over?.id;
+    if (!overId) return;
+    const targetColumn = String(overId) as KanbanColumn;
+    if (!DROPPABLE_COLUMNS.includes(targetColumn)) return;
+    const id = String(e.active.id);
+    const opp = items.find((o) => o.id === id);
+    if (!opp || opp.kanbanColumn === targetColumn) return;
+    // Optimistic move
+    setItems((prev) =>
+      prev.map((o) => (o.id === id ? { ...o, kanbanColumn: targetColumn } : o))
+    );
+    try {
+      const res = await fetch(`/api/discoveries/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kanbanColumn: targetColumn })
+      });
+      if (!res.ok) throw new Error("Move failed");
+    } catch (err) {
+      toast((err as Error).message, "error");
+      await reload();
+    }
+  }
+
+  const activeDragOpp = useMemo(
+    () => items.find((o) => o.id === activeDragId) || null,
+    [items, activeDragId]
+  );
 
   // ── Render ──
   return (
     <div className="flex-1 min-w-0 min-h-0 flex flex-col">
-      {/* Header */}
-      <div className="px-6 py-4 border-b border-ink-200 bg-white shrink-0">
-        <div className="flex items-start justify-between gap-4 flex-wrap mb-3">
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <Telescope className="size-4 text-ink-500" />
-              <h1 className="text-base font-semibold text-ink-900 leading-tight">
-                AI Discovery
-              </h1>
-            </div>
-            <p className="text-xs text-ink-500 leading-tight max-w-2xl">
-              Demand-capture pipeline. Each card moves Intake → New →
-              In&#x2011;progress → Done. Accept queues a brief; Mark done
-              ships a Kanban task to <Link href="/board" className="underline">/board</Link>.
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
+      <PipelineTopBar
+        title="AI Discovery"
+        subtitle="Demand-capture pipeline. Identify content gaps via Gemini, accept the best, ship them to Kanban when done."
+        actions={
+          <>
             <Button
               variant="primary"
               onClick={() => void identifyGaps()}
@@ -350,38 +404,15 @@ export default function DiscoveryKanbanPage() {
                 Clear all
               </button>
             ) : null}
-          </div>
-        </div>
-
-        {identifying ? (
-          <div className="mt-3 rounded-lg bg-brand-50 ring-1 ring-inset ring-brand-200 px-3 py-2 flex items-center gap-3 text-xs">
-            <Loader2 className="size-3.5 text-brand-700 animate-spin shrink-0" />
-            <div className="flex-1 min-w-0">
-              <div className="font-medium text-brand-900 mb-1">
-                Gemini is identifying content gaps for your brand
-              </div>
-              <div className="text-brand-700">
-                {identifySteps[identifyStep]}
-              </div>
-            </div>
-          </div>
-        ) : null}
-
-        {/* Search + filters */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="relative flex-1 min-w-[200px] max-w-sm">
-            <SearchIcon className="size-4 absolute left-3 top-1/2 -translate-y-1/2 text-ink-400" />
-            <input
-              type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search keyword"
-              className="input pl-9"
-            />
-          </div>
-
-          {/* Signal filter pills */}
-          <div className="flex items-center gap-1.5">
+          </>
+        }
+        search={{
+          value: query,
+          onChange: setQuery,
+          placeholder: "Search keyword"
+        }}
+        filters={
+          <>
             <FilterPill
               active={signalFilter === "all"}
               onClick={() => setSignalFilter("all")}
@@ -410,10 +441,7 @@ export default function DiscoveryKanbanPage() {
             >
               Both
             </FilterPill>
-          </div>
-
-          {/* Type filter pills */}
-          <div className="flex items-center gap-1.5 ml-2">
+            <span className="h-4 w-px bg-ink-200 mx-1" aria-hidden />
             <span className="text-[10px] uppercase tracking-wider text-ink-500 mr-1">
               Type
             </span>
@@ -435,79 +463,162 @@ export default function DiscoveryKanbanPage() {
                 </FilterPill>
               )
             )}
-          </div>
-
-          <Badge tone="neutral" className="ml-auto">
-            {filtered.length} of {items.length}
-          </Badge>
-        </div>
-
-        {/* Sample data banner */}
-        {sampleCount > 0 && !sampleBannerDismissed ? (
-          <div className="mt-3 rounded-lg bg-brand-50 ring-1 ring-inset ring-brand-200 px-3 py-2 flex items-center gap-2 text-xs">
-            <Sparkles className="size-3.5 text-brand-700 shrink-0" />
-            <div className="flex-1 text-brand-900">
-              <strong>Sample data mode.</strong> {sampleCount} demo
-              opportunities loaded so you can try the full workflow. Connect
-              real sources in Settings → Data sources to replace these.
-            </div>
-            <button
-              onClick={async () => {
-                if (
-                  window.confirm(
-                    "Clear all sample opportunities? Real data from connected sources stays."
-                  )
-                ) {
-                  await fetch("/api/discoveries/seed", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ clear: true })
-                  });
-                  await reload();
-                }
-              }}
-              className="text-brand-700 underline hover:text-brand-900"
-            >
-              Clear samples
-            </button>
-            <button
-              onClick={() => setSampleBannerDismissed(true)}
-              className="text-brand-700 hover:text-brand-900"
-            >
-              Dismiss
-            </button>
-          </div>
-        ) : null}
-      </div>
+          </>
+        }
+        countLabel={`${filtered.length} of ${items.length}`}
+        banner={
+          <>
+            {identifying ? (
+              <div className="rounded-lg bg-brand-50 ring-1 ring-inset ring-brand-200 px-3 py-2 flex items-center gap-3 text-xs">
+                <Loader2 className="size-3.5 text-brand-700 animate-spin shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium text-brand-900 mb-1">
+                    Gemini is identifying content gaps for your brand
+                  </div>
+                  <div className="text-brand-700">
+                    {identifySteps[identifyStep]}
+                  </div>
+                </div>
+              </div>
+            ) : null}
+            {sampleCount > 0 && !sampleBannerDismissed && !identifying ? (
+              <div className="rounded-lg bg-brand-50 ring-1 ring-inset ring-brand-200 px-3 py-2 flex items-center gap-2 text-xs">
+                <Sparkles className="size-3.5 text-brand-700 shrink-0" />
+                <div className="flex-1 text-brand-900">
+                  <strong>Sample data mode.</strong> {sampleCount} demo
+                  opportunities loaded so you can try the full workflow.
+                </div>
+                <button
+                  onClick={async () => {
+                    if (
+                      window.confirm(
+                        "Clear all sample opportunities? Real data from connected sources stays."
+                      )
+                    ) {
+                      await fetch("/api/discoveries/seed", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ clear: true })
+                      });
+                      await reload();
+                    }
+                  }}
+                  className="text-brand-700 underline hover:text-brand-900"
+                >
+                  Clear samples
+                </button>
+                <button
+                  onClick={() => setSampleBannerDismissed(true)}
+                  className="text-brand-700 hover:text-brand-900"
+                >
+                  Dismiss
+                </button>
+              </div>
+            ) : null}
+          </>
+        }
+      />
 
       {/* Kanban board */}
       <div className="flex-1 min-h-0 overflow-hidden p-4">
         {loading ? (
           <div className="text-sm text-ink-500 p-4">Loading…</div>
         ) : (
-          <div className="h-full grid grid-cols-4 gap-3">
-            {COLUMN_ORDER.map((col) => (
-              <Column
-                key={col}
-                column={col}
-                items={byColumn[col]}
-                busyId={busyId}
-                onOpenDetail={handleOpenDetail}
-                onAccept={handleAccept}
-                onReject={handleReject}
-                onViewBrief={(o) => handleOpenDetail(o.id)}
-                onGenerateContent={(o) => handleOpenDetail(o.id)}
-                onMarkDone={handleMarkDone}
-                rejectedCount={col === "intake" ? rejected.length : 0}
-                onUndoReject={col === "intake" ? handleUndoReject : undefined}
-                canUndo={rejectStack.length > 0}
-              />
-            ))}
-          </div>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+          >
+            <div className="flex gap-3 h-full overflow-x-auto scrollbar-thin">
+              {COLUMN_ORDER.map((col) => (
+                <PipelineColumn
+                  key={col}
+                  title={COLUMN_LABEL[col]}
+                  count={byColumn[col].length}
+                  tone={COLUMN_TONE[col]}
+                  droppableId={
+                    DROPPABLE_COLUMNS.includes(col) ? col : undefined
+                  }
+                  emptyState={
+                    <div className="text-[11px] text-ink-400 text-center py-6 px-2">
+                      {col === "intake"
+                        ? "No fresh gaps. Click Identify gaps to ask Gemini."
+                        : col === "new"
+                        ? "Cards land here when Accepted."
+                        : col === "in_progress"
+                        ? "Cards arrive here when content generation starts."
+                        : "Marked-done cards land here and ship to /board."}
+                    </div>
+                  }
+                  footer={
+                    col === "intake" ? (
+                      <div className="px-3 py-2 rounded-md bg-ink-100 text-xs flex items-center justify-between">
+                        <span className="text-ink-500 inline-flex items-center gap-1.5">
+                          <Archive className="size-3" />
+                          Rejected ({rejected.length})
+                        </span>
+                        {rejectStack.length > 0 ? (
+                          <button
+                            onClick={handleUndoReject}
+                            className="text-ink-700 hover:text-ink-900 inline-flex items-center gap-1 font-medium"
+                          >
+                            <Undo2 className="size-3" />
+                            Undo
+                          </button>
+                        ) : null}
+                      </div>
+                    ) : null
+                  }
+                >
+                  {byColumn[col].map((o) =>
+                    DROPPABLE_COLUMNS.includes(col) ? (
+                      <DraggableOpportunityCard
+                        key={o.id}
+                        opp={o}
+                        column={col}
+                        busy={busyId === o.id}
+                        onOpenDetail={() => setOpenId(o.id)}
+                        onAccept={() => handleAccept(o)}
+                        onReject={() => handleReject(o)}
+                        onMarkDone={() => handleMarkDone(o)}
+                      />
+                    ) : (
+                      <OpportunityRow
+                        key={o.id}
+                        opp={o}
+                        column={col}
+                        busy={busyId === o.id}
+                        onOpenDetail={() => setOpenId(o.id)}
+                        onAccept={() => handleAccept(o)}
+                        onReject={() => handleReject(o)}
+                        onMarkDone={() => handleMarkDone(o)}
+                      />
+                    )
+                  )}
+                </PipelineColumn>
+              ))}
+            </div>
+            <DragOverlay>
+              {activeDragOpp ? (
+                <div className="w-[360px] opacity-90">
+                  <OpportunityRow
+                    opp={activeDragOpp}
+                    column={activeDragOpp.kanbanColumn as KanbanColumn}
+                    busy={false}
+                    onOpenDetail={() => {}}
+                    onAccept={() => {}}
+                    onReject={() => {}}
+                    onMarkDone={() => {}}
+                    isDragOverlay
+                  />
+                </div>
+              ) : null}
+            </DragOverlay>
+          </DndContext>
         )}
       </div>
 
-      {/* Detail panel */}
       {openOpp ? (
         <DetailPanel
           opportunity={openOpp}
@@ -523,129 +634,190 @@ export default function DiscoveryKanbanPage() {
   );
 }
 
-// ── Column ──
-function Column({
-  column,
-  items,
-  busyId,
-  onOpenDetail,
-  onAccept,
-  onReject,
-  onViewBrief,
-  onGenerateContent,
-  onMarkDone,
-  rejectedCount,
-  onUndoReject,
-  canUndo
-}: {
-  column: KanbanColumn;
-  items: Opportunity[];
-  busyId: string | null;
-  onOpenDetail: (id: string) => void;
-  onAccept: (o: Opportunity) => void;
-  onReject: (o: Opportunity) => void;
-  onViewBrief: (o: Opportunity) => void;
-  onGenerateContent: (o: Opportunity) => void;
-  onMarkDone: (o: Opportunity) => void;
-  rejectedCount: number;
-  onUndoReject?: () => void;
-  canUndo: boolean;
-}) {
+// ── Draggable wrapper ──
+function DraggableOpportunityCard(
+  props: React.ComponentProps<typeof OpportunityRow>
+) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: props.opp.id
+  });
   return (
-    <div className="bg-ink-50 rounded-xl border border-ink-200 flex flex-col min-h-0">
-      <div className="px-3 py-2.5 border-b border-ink-200 flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-2">
-          <h2 className="text-xs font-semibold text-ink-900 uppercase tracking-wider">
-            {COLUMN_LABEL[column]}
-          </h2>
-          <Badge tone="neutral" className="!text-[10px] !px-1.5">
-            {items.length}
-          </Badge>
-        </div>
-      </div>
-      <div className="flex-1 min-h-0 overflow-auto scrollbar-thin p-2 space-y-2">
-        {items.length === 0 ? (
-          <div className="text-[11px] text-ink-400 text-center py-6 px-2">
-            {column === "intake"
-              ? "No fresh opportunities. Connect a source to pull more."
-              : column === "new"
-              ? "Cards land here when Accepted."
-              : column === "in_progress"
-              ? "Cards arrive here when content generation starts."
-              : "Marked-done cards land here and ship to /board."}
-          </div>
-        ) : (
-          items.map((o) => (
-            <OpportunityCard
-              key={o.id}
-              opp={o}
-              column={column}
-              busy={busyId === o.id}
-              onOpenDetail={() => onOpenDetail(o.id)}
-              onAccept={() => onAccept(o)}
-              onReject={() => onReject(o)}
-              onViewBrief={() => onViewBrief(o)}
-              onGenerateContent={() => onGenerateContent(o)}
-              onMarkDone={() => onMarkDone(o)}
-            />
-          ))
-        )}
-      </div>
-      {/* Rejected (N) link below Intake */}
-      {column === "intake" ? (
-        <div className="border-t border-ink-200 px-3 py-2 flex items-center justify-between text-xs">
-          <span className="text-ink-500 inline-flex items-center gap-1.5">
-            <Archive className="size-3" />
-            Rejected ({rejectedCount})
-          </span>
-          {canUndo && onUndoReject ? (
-            <button
-              onClick={onUndoReject}
-              className="text-ink-700 hover:text-ink-900 inline-flex items-center gap-1 font-medium"
-            >
-              <Undo2 className="size-3" />
-              Undo
-            </button>
-          ) : null}
-        </div>
-      ) : null}
+    <div
+      ref={setNodeRef}
+      {...listeners}
+      {...attributes}
+      className={cn(isDragging && "opacity-30")}
+    >
+      <OpportunityRow {...props} />
     </div>
   );
 }
 
-function FilterPill({
-  active,
-  onClick,
-  icon,
-  tone,
-  children,
-  customClass
+// ── Single card renderer ──
+// Builds the PipelineCard prop set from an Opportunity. Same chassis,
+// same visuals, same actions across both surfaces.
+function OpportunityRow({
+  opp,
+  column,
+  busy,
+  onOpenDetail,
+  onAccept,
+  onReject,
+  onMarkDone,
+  isDragOverlay
 }: {
-  active: boolean;
-  onClick: () => void;
-  icon?: React.ReactNode;
-  tone?: "trending" | "aeo";
-  children: React.ReactNode;
-  customClass?: string;
+  opp: Opportunity;
+  column: KanbanColumn;
+  busy: boolean;
+  onOpenDetail: () => void;
+  onAccept: () => void;
+  onReject: () => void;
+  onMarkDone: () => void;
+  isDragOverlay?: boolean;
 }) {
+  const targetKw =
+    opp.metrics &&
+    typeof (opp.metrics as Record<string, unknown>).targetKeyword === "string"
+      ? ((opp.metrics as Record<string, unknown>).targetKeyword as string)
+      : "";
+
+  const metrics: { label: string; value: string }[] = [];
+  if (opp.weeklyImpressions) {
+    metrics.push({
+      label: "Impressions",
+      value: opp.weeklyImpressions.toLocaleString()
+    });
+  }
+  if (opp.competitorGapScore) {
+    metrics.push({ label: "Gap", value: String(opp.competitorGapScore) });
+  }
+  if (opp.metrics && (opp.metrics as Record<string, unknown>).position != null) {
+    const p = (opp.metrics as Record<string, unknown>).position as number;
+    metrics.push({ label: "Pos", value: `#${p.toFixed(1)}` });
+  }
+
+  const signals = [];
+  if (opp.trending) {
+    signals.push({
+      label: "Trending",
+      icon: <SignalIcons.Trending className="size-3" />,
+      className: TRENDING_BADGE_CLASS
+    });
+  }
+  if (opp.aiCitationGap) {
+    signals.push({
+      label: "AI citation gap",
+      icon: <SignalIcons.AICitation className="size-3" />,
+      className: AI_CITATION_BADGE_CLASS
+    });
+  }
+  if (opp.cannibalizingPages && opp.cannibalizingPages.length > 0) {
+    signals.push({
+      label: "Cannibalization risk",
+      icon: <SignalIcons.Cannibalization className="size-3" />,
+      className: "bg-amber-50 text-amber-800 ring-1 ring-inset ring-amber-200",
+      title: `Overlaps with ${opp.cannibalizingPages.length} published page${
+        opp.cannibalizingPages.length === 1 ? "" : "s"
+      }`
+    });
+  }
+
+  const footer = (() => {
+    if (column === "intake") {
+      return (
+        <>
+          <button
+            onClick={onAccept}
+            disabled={busy}
+            className="flex-1 h-7 px-2 rounded-md bg-ink-900 hover:bg-ink-800 text-white text-xs font-medium transition disabled:opacity-50"
+          >
+            {busy ? (
+              <Loader2 className="size-3 animate-spin mx-auto" />
+            ) : (
+              "Accept"
+            )}
+          </button>
+          <button
+            onClick={onReject}
+            disabled={busy}
+            className="h-7 px-2 rounded-md bg-white hover:bg-ink-50 ring-1 ring-inset ring-ink-200 text-ink-600 text-xs transition disabled:opacity-50"
+          >
+            Reject
+          </button>
+        </>
+      );
+    }
+    if (column === "new") {
+      return (
+        <button
+          onClick={onOpenDetail}
+          disabled={busy}
+          className="flex-1 h-7 px-2 rounded-md bg-ink-900 hover:bg-ink-800 text-white text-xs font-medium transition disabled:opacity-50 inline-flex items-center justify-center gap-1"
+        >
+          View brief
+          <ChevronRight className="size-3" />
+        </button>
+      );
+    }
+    if (column === "in_progress") {
+      return (
+        <button
+          onClick={onMarkDone}
+          disabled={busy || !opp.contentGeneratedAt}
+          className="flex-1 h-7 px-2 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium transition disabled:opacity-50 disabled:bg-ink-200 disabled:text-ink-500"
+        >
+          {busy
+            ? "Working…"
+            : opp.contentGeneratedAt
+            ? "Mark done"
+            : "Generating…"}
+        </button>
+      );
+    }
+    return (
+      <div className="flex-1 text-[10px] text-ink-500 inline-flex items-center gap-1">
+        <CheckCircle2 className="size-3 text-emerald-500" />
+        Published to Kanban
+      </div>
+    );
+  })();
+
   return (
-    <button
-      onClick={onClick}
-      className={cn(
-        "inline-flex items-center gap-1 px-2.5 h-7 rounded-full text-[11px] font-medium transition ring-1 ring-inset",
-        active && tone === "aeo"
-          ? "bg-[#4A4DC9] text-white ring-[#4A4DC9]"
-          : active && tone === "trending"
-          ? "bg-amber-500 text-white ring-amber-500"
-          : active
-          ? "bg-ink-900 text-white ring-ink-900"
-          : customClass
-          ? `bg-white hover:bg-ink-50 ring-ink-200 ${customClass}`
-          : "bg-white text-ink-700 ring-ink-200 hover:bg-ink-50"
-      )}
-    >
-      {icon}
-      {children}
-    </button>
+    <PipelineCard
+      id={opp.id}
+      title={opp.query}
+      subline={
+        targetKw && targetKw.toLowerCase() !== opp.query.toLowerCase()
+          ? { label: "kw", value: targetKw }
+          : null
+      }
+      typeBadge={{
+        label: TYPE_LABEL[opp.opportunityType],
+        className: TYPE_BADGE_CLASS[opp.opportunityType]
+      }}
+      priorityBadge={{
+        label: PRIORITY_LABEL[opp.priority],
+        className: PRIORITY_BADGE_CLASS[opp.priority]
+      }}
+      score={opp.score}
+      scoreTone={pickScoreTone(opp.score)}
+      signals={signals}
+      metrics={metrics}
+      indicator={
+        opp.briefData
+          ? { label: "Brief ready", tone: "success" }
+          : undefined
+      }
+      footer={footer}
+      onClick={onOpenDetail}
+      isDragOverlay={isDragOverlay}
+    />
   );
 }
+
+// Silence unused legacy imports kept for tone-class re-export consistency.
+void SOURCE_LABEL;
+void SOURCE_TONE;
+void Badge;
+void Telescope;
+void AlertTriangle;

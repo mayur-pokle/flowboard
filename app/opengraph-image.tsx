@@ -228,7 +228,7 @@ export default async function OpengraphImage() {
                 </span>
               </div>
               <NavItem icon="🔭" label="AI Discovery" count="8" />
-              <NavItem icon="▦" label="Content Pipeline" count="35" active />
+              <NavItem icon="▤" label="AI Resources" count="35" active />
               <NavItem icon="⚙" label="Settings" />
             </div>
 

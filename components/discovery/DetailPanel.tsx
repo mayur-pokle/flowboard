@@ -38,6 +38,11 @@ import type { Opportunity } from "./types";
 import type { QualityChecks, CheckStatus } from "@/lib/content-quality";
 import { renderMarkdown } from "@/lib/markdown-mini";
 import { cn } from "@/lib/utils";
+import {
+  PipelinePanel,
+  type PanelHeaderBadge,
+  type PanelTab
+} from "@/components/pipeline/PipelinePanel";
 
 type Tab = "brief" | "content" | "quality";
 
@@ -306,259 +311,219 @@ export function DetailPanel({
   const toneCls = SCORE_TONE_CLASSES[tone];
   const breakdown = opportunity.scoreBreakdown;
 
+  // ── Shared PipelinePanel chassis ──
+  // Derives all the chassis props (badges, score block, signals,
+  // tabs) from the opportunity, then delegates to the shared
+  // PipelinePanel. The tab CONTENT (Brief / Content / Quality) still
+  // lives in the local BriefTab / ContentTab / QualityTab functions
+  // below.
+  const targetKw = (() => {
+    const tk =
+      opportunity.metrics &&
+      typeof (opportunity.metrics as Record<string, unknown>)
+        .targetKeyword === "string"
+        ? ((opportunity.metrics as Record<string, unknown>)
+            .targetKeyword as string)
+        : "";
+    return tk && tk.toLowerCase() !== opportunity.query.toLowerCase()
+      ? tk
+      : null;
+  })();
+
+  const badges: PanelHeaderBadge[] = [
+    {
+      label: TYPE_LABEL[opportunity.opportunityType],
+      className: TYPE_BADGE_CLASS[opportunity.opportunityType]
+    },
+    {
+      label: PRIORITY_LABEL[opportunity.priority],
+      className: PRIORITY_BADGE_CLASS[opportunity.priority]
+    },
+    {
+      label: SOURCE_LABEL[opportunity.source] || opportunity.source,
+      className: cn(
+        SOURCE_TONE[opportunity.source] === "info"
+          ? "bg-brand-50 text-brand-700 ring-1 ring-inset ring-brand-200"
+          : SOURCE_TONE[opportunity.source] === "success"
+          ? "bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-200"
+          : SOURCE_TONE[opportunity.source] === "warn"
+          ? "bg-amber-50 text-amber-800 ring-1 ring-inset ring-amber-200"
+          : SOURCE_TONE[opportunity.source] === "danger"
+          ? "bg-rose-50 text-rose-700 ring-1 ring-inset ring-rose-200"
+          : "bg-ink-100 text-ink-700 ring-1 ring-inset ring-ink-200",
+        "uppercase tracking-wider"
+      )
+    }
+  ];
+
+  const signalsBlock = (
+    <>
+      {opportunity.trending ? (
+        <span
+          className={cn(
+            "badge text-[10px] inline-flex items-center gap-1",
+            TRENDING_BADGE_CLASS
+          )}
+        >
+          <TrendingUp className="size-3" />
+          Trending +
+          {Math.round(
+            ((opportunity.weeklyImpressions -
+              opportunity.previousWeekImpressions) /
+              Math.max(1, opportunity.previousWeekImpressions)) *
+              100
+          )}
+          % WoW
+        </span>
+      ) : null}
+      {opportunity.aiCitationGap ? (
+        <span
+          className={cn(
+            "badge text-[10px] inline-flex items-center gap-1",
+            AI_CITATION_BADGE_CLASS
+          )}
+        >
+          <Sparkles className="size-3" />
+          AI citation gap
+        </span>
+      ) : null}
+    </>
+  );
+
+  const tabs: PanelTab[] = [
+    {
+      id: "brief",
+      label: "Brief",
+      indicator:
+        Boolean(briefDataLocal) || briefMd.trim().length > 0 ? (
+          <CheckCircle2 className="size-3 text-emerald-500" />
+        ) : null,
+      render: () => (
+        <BriefTab
+          opportunity={opportunity}
+          briefData={briefDataLocal}
+          briefMd={briefMd}
+          setBriefMd={setBriefMd}
+          editing={editing === "brief"}
+          setEditing={(b) => setEditing(b ? "brief" : null)}
+          busy={busy === "brief"}
+          onGenerate={generateBrief}
+          onSave={saveBrief}
+          onGoContent={() => {
+            setTab("content");
+            if (!contentMd) void generateContent();
+          }}
+          hasBrief={Boolean(briefDataLocal) || briefMd.trim().length > 0}
+        />
+      )
+    },
+    {
+      id: "content",
+      label: "Content",
+      indicator: contentMd.trim().length > 0 ? (
+        <CheckCircle2 className="size-3 text-emerald-500" />
+      ) : null,
+      render: () => (
+        <ContentTab
+          opportunity={opportunity}
+          contentMd={contentMd}
+          setContentMd={setContentMd}
+          editing={editing === "content"}
+          setEditing={(b) => setEditing(b ? "content" : null)}
+          busy={busy === "content" || busy === "regen"}
+          onGenerate={generateContent}
+          onRegenerate={regenerateContent}
+          onSave={saveContent}
+          onCopy={copyMarkdown}
+          hasContent={contentMd.trim().length > 0}
+          hasBrief={Boolean(briefDataLocal) || briefMd.trim().length > 0}
+        />
+      )
+    },
+    {
+      id: "quality",
+      label: "Quality",
+      indicator: quality ? (
+        <span
+          className={cn(
+            "size-1.5 rounded-full inline-block",
+            quality.overall === "pass"
+              ? "bg-emerald-500"
+              : quality.overall === "warning"
+              ? "bg-amber-500"
+              : "bg-rose-500"
+          )}
+        />
+      ) : null,
+      render: () => <QualityTab quality={quality} />
+    }
+  ];
+
+  const showMoveBack =
+    opportunity.kanbanColumn !== "intake" &&
+    opportunity.kanbanColumn !== "rejected";
+
   return (
-    <div className="fixed inset-y-0 right-0 w-full md:w-[680px] bg-white shadow-2xl border-l border-ink-200 flex flex-col z-50 animate-in slide-in-from-right duration-200">
-      {/* Header */}
-      <div className="px-6 py-4 border-b border-ink-200 shrink-0">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-1.5 mb-2">
-              <span
-                className={cn(
-                  "badge text-[10px]",
-                  TYPE_BADGE_CLASS[opportunity.opportunityType]
-                )}
-              >
-                {TYPE_LABEL[opportunity.opportunityType]}
-              </span>
-              <span
-                className={cn(
-                  "badge text-[10px] font-semibold",
-                  PRIORITY_BADGE_CLASS[opportunity.priority]
-                )}
-              >
-                {PRIORITY_LABEL[opportunity.priority]}
-              </span>
-              <Badge
-                tone={SOURCE_TONE[opportunity.source] || "neutral"}
-                className="!text-[10px] uppercase tracking-wider"
-              >
-                {SOURCE_LABEL[opportunity.source] || opportunity.source}
-              </Badge>
-            </div>
-            <h2 className="text-lg font-bold text-ink-900 leading-tight">
-              {opportunity.query}
-            </h2>
-            {(() => {
-              const tk =
-                opportunity.metrics &&
-                typeof (opportunity.metrics as Record<string, unknown>)
-                  .targetKeyword === "string"
-                  ? ((opportunity.metrics as Record<string, unknown>)
-                      .targetKeyword as string)
-                  : "";
-              if (!tk || tk.toLowerCase() === opportunity.query.toLowerCase())
-                return null;
-              return (
-                <div className="font-mono text-[11px] text-ink-500 mt-1">
-                  <span className="uppercase tracking-wider mr-1">
-                    Target keyword:
-                  </span>
-                  {tk}
-                </div>
-              );
-            })()}
-            {opportunity.reason ? (
-              <p className="text-xs text-ink-600 mt-1.5 leading-relaxed">
-                {opportunity.reason}
-              </p>
-            ) : null}
-          </div>
-          <div className="flex items-center gap-1 shrink-0">
-            {opportunity.kanbanColumn !== "intake" &&
-            opportunity.kanbanColumn !== "rejected" ? (
-              <button
-                onClick={moveBack}
-                title="Move card back one column"
-                className="size-8 grid place-items-center rounded-md hover:bg-ink-100 text-ink-500"
-              >
-                <Undo2 className="size-4" />
-              </button>
-            ) : null}
-            <button
-              onClick={deletePermanently}
-              title="Delete permanently"
-              className="size-8 grid place-items-center rounded-md hover:bg-rose-50 hover:text-rose-600 text-ink-500"
-            >
-              <Trash2 className="size-4" />
-            </button>
-            <button
-              onClick={onClose}
-              className="size-8 grid place-items-center rounded-md hover:bg-ink-100 text-ink-500"
-              aria-label="Close"
-            >
-              <X className="size-4" />
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Body */}
-      <div className="flex-1 min-h-0 overflow-auto scrollbar-thin">
-        {/* Priority speedometer + 6 score component bars */}
-        <div className="px-6 py-4 border-b border-ink-100">
-          <div className="grid grid-cols-2 gap-4 items-center">
-            <Speedometer
-              score={opportunity.score}
-              tone={tone}
-              priority={opportunity.priority}
-            />
-            <div className="space-y-2.5">
-              <ScoreBar
-                label="Search demand"
-                value={breakdown?.searchDemand ?? 0}
-                max={20}
-              />
-              <ScoreBar
-                label="Trending velocity"
-                value={breakdown?.trendingVelocity ?? 0}
-                max={15}
-              />
-              <ScoreBar
-                label="Competitor gap"
-                value={breakdown?.competitorGap ?? 0}
-                max={20}
-              />
-              <ScoreBar
-                label="AI citation gap"
-                value={breakdown?.aiCitationGap ?? 0}
-                max={20}
-                aeo
-              />
-              <ScoreBar
-                label="Conversion fit"
-                value={breakdown?.conversionFit ?? 0}
-                max={15}
-              />
-              <ScoreBar
-                label="Cannibalization clarity"
-                value={breakdown?.cannibalizationClarity ?? 0}
-                max={10}
-              />
-            </div>
-          </div>
-          {(opportunity.trending || opportunity.aiCitationGap) && (
-            <div className="flex items-center gap-1.5 mt-3 pt-3 border-t border-ink-100">
-              <span className="text-[10px] uppercase tracking-wider text-ink-500 mr-1">
-                Signals
-              </span>
-              {opportunity.trending ? (
-                <span
-                  className={cn(
-                    "badge text-[10px] inline-flex items-center gap-1",
-                    TRENDING_BADGE_CLASS
-                  )}
-                >
-                  <TrendingUp className="size-3" />
-                  Trending +
-                  {Math.round(
-                    ((opportunity.weeklyImpressions -
-                      opportunity.previousWeekImpressions) /
-                      Math.max(1, opportunity.previousWeekImpressions)) *
-                      100
-                  )}
-                  % WoW
-                </span>
-              ) : null}
-              {opportunity.aiCitationGap ? (
-                <span
-                  className={cn(
-                    "badge text-[10px] inline-flex items-center gap-1",
-                    AI_CITATION_BADGE_CLASS
-                  )}
-                >
-                  <Sparkles className="size-3" />
-                  AI citation gap
-                </span>
-              ) : null}
-            </div>
-          )}
-        </div>
-
-        {/* Tabs */}
-        <div className="px-6 pt-4 border-b border-ink-200 sticky top-0 bg-white z-10">
-          <div className="flex items-center gap-1">
-            <TabButton
-              active={tab === "brief"}
-              onClick={() => setTab("brief")}
-            >
-              Brief
-              {opportunity.briefData ? (
-                <CheckCircle2 className="size-3 text-emerald-500 ml-1.5" />
-              ) : null}
-            </TabButton>
-            <TabButton
-              active={tab === "content"}
-              onClick={() => setTab("content")}
-            >
-              Content
-              {opportunity.contentMarkdown ? (
-                <CheckCircle2 className="size-3 text-emerald-500 ml-1.5" />
-              ) : null}
-            </TabButton>
-            <TabButton
-              active={tab === "quality"}
-              onClick={() => setTab("quality")}
-            >
-              Quality
-              {quality ? (
-                <span
-                  className={cn(
-                    "ml-1.5 size-1.5 rounded-full",
-                    quality.overall === "pass"
-                      ? "bg-emerald-500"
-                      : quality.overall === "warning"
-                      ? "bg-amber-500"
-                      : "bg-rose-500"
-                  )}
-                />
-              ) : null}
-            </TabButton>
-          </div>
-        </div>
-
-        {/* Tab content */}
-        <div className="px-6 py-4">
-          {tab === "brief" ? (
-            <BriefTab
-              opportunity={opportunity}
-              briefData={briefDataLocal}
-              briefMd={briefMd}
-              setBriefMd={setBriefMd}
-              editing={editing === "brief"}
-              setEditing={(b) => setEditing(b ? "brief" : null)}
-              busy={busy === "brief"}
-              onGenerate={generateBrief}
-              onSave={saveBrief}
-              onGoContent={() => {
-                setTab("content");
-                if (!contentMd) void generateContent();
-              }}
-              hasBrief={Boolean(briefDataLocal) || briefMd.trim().length > 0}
-            />
-          ) : tab === "content" ? (
-            <ContentTab
-              opportunity={opportunity}
-              contentMd={contentMd}
-              setContentMd={setContentMd}
-              editing={editing === "content"}
-              setEditing={(b) => setEditing(b ? "content" : null)}
-              busy={busy === "content" || busy === "regen"}
-              onGenerate={generateContent}
-              onRegenerate={regenerateContent}
-              onSave={saveContent}
-              onCopy={copyMarkdown}
-              hasContent={contentMd.trim().length > 0}
-              hasBrief={Boolean(briefDataLocal) || briefMd.trim().length > 0}
-            />
-          ) : (
-            <QualityTab quality={quality} />
-          )}
-        </div>
-      </div>
-    </div>
+    <PipelinePanel
+      title={opportunity.query}
+      subline={
+        targetKw ? { label: "Target keyword", value: targetKw } : null
+      }
+      reason={opportunity.reason}
+      badges={badges}
+      score={{
+        value: opportunity.score,
+        label: "Priority",
+        priorityLabel: opportunity.priority,
+        bars: [
+          {
+            label: "Search demand",
+            value: breakdown?.searchDemand ?? 0,
+            max: 20
+          },
+          {
+            label: "Trending velocity",
+            value: breakdown?.trendingVelocity ?? 0,
+            max: 15
+          },
+          {
+            label: "Competitor gap",
+            value: breakdown?.competitorGap ?? 0,
+            max: 20
+          },
+          {
+            label: "AI citation gap",
+            value: breakdown?.aiCitationGap ?? 0,
+            max: 20,
+            tone: "aeo"
+          },
+          {
+            label: "Conversion fit",
+            value: breakdown?.conversionFit ?? 0,
+            max: 15
+          },
+          {
+            label: "Cannibalization clarity",
+            value: breakdown?.cannibalizationClarity ?? 0,
+            max: 10
+          }
+        ]
+      }}
+      signals={signalsBlock}
+      tabs={tabs}
+      activeTabId={tab}
+      onTabChange={(id) => setTab(id as Tab)}
+      onMoveBack={showMoveBack ? moveBack : undefined}
+      onDelete={deletePermanently}
+      onClose={onClose}
+    />
   );
 }
+
+// Tone / inline Speedometer / inline ScoreBar / inline TabButton
+// helpers below this point are no longer rendered (the shared
+// PipelinePanel handles the chassis). Kept in the file as dead code
+// rather than deleted in case a follow-up needs the visual reference.
 
 // ── Priority speedometer ──
 function Speedometer({

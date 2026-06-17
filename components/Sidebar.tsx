@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
 import {
-  KanbanSquare,
+  Layers,
   Settings,
   LogOut,
   Telescope
@@ -12,11 +12,12 @@ import {
 import { cn } from "@/lib/utils";
 import { useStore, useHasHydrated } from "@/lib/store";
 
-// AI Resources and Kanban merged — generation lives inside the
-// Content Pipeline page as the leftmost "Ideas" column.
+// AI Resources holds the full content production funnel — generation
+// in the Ideas column, then triage / production / done. AI Discovery
+// is the demand-capture surface; they share the same kanban chassis.
 const items = [
   { href: "/discovery", label: "AI Discovery", icon: Telescope },
-  { href: "/board", label: "Content Pipeline", icon: KanbanSquare },
+  { href: "/board", label: "AI Resources", icon: Layers },
   { href: "/settings/api", label: "Settings", icon: Settings }
 ];
 

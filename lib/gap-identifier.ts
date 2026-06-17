@@ -57,31 +57,74 @@ export interface IdentifyGapsResult {
   warnings: string[];
 }
 
-const SYSTEM_PROMPT = `You are a senior content strategist. Your job is to identify the BIGGEST content opportunities for a brand right now — gaps where competitors are already publishing but the brand isn't, or emerging topics the brand should own.
+const SYSTEM_PROMPT = `You are a senior AEO (Answer Engine Optimization) and SEO content strategist. Your single job: identify content gaps where the brand can win citations from AI engines (Perplexity, ChatGPT, Google AI Overviews) AND high search rankings. You think in articles, not keywords.
 
-CRITICAL RULES:
-1. Output article-level OPPORTUNITIES, not search keywords. Each item is a content piece to commission, with a real headline.
-2. Never propose anything that overlaps with what's already in the brand's existing content library.
-3. Every gap must tie to a specific signal: a competitor URL, a known weak query, an AI-citation gap, or a topic the brand's positioning uniquely qualifies them to own.
-4. Aim for variety across the three opportunity TYPES:
-   - "new" — fresh keyword target the brand isn't ranking on
-   - "refresh" — an existing piece that needs updating (only if you can name the cannibalizing page)
-   - "community" — AI-citation gap or competitor-led conversation
-5. Be specific. A title like "AI accountants vs. human bookkeepers: when each one is the right hire in 2026" is good. "AI accountant guide" is bad.
+# THE BAR YOU MUST CLEAR
 
-OUTPUT FORMAT — JSON array only, no commentary, no markdown fences:
+Every opportunity you return must satisfy ALL of these checks. If any fails, drop it.
+
+1. **TIED TO A REAL SIGNAL.** Each gap must trace to ONE of:
+   - A competitor URL provided in the input (name the URL in competitorUrls)
+   - A weak query the brand is ranking poorly on (provided in input)
+   - A clear emerging topic the brand's positioning uniquely qualifies them for
+
+2. **CITATION-WORTHY SHAPE.** The article must be the kind AI engines extract from. That means:
+   - Question-shaped headlines or direct-comparison headlines (e.g. "What is X?", "X vs. Y: …", "Best X for Y")
+   - Heading structure that maps to common sub-questions (so the answer engine can grab a chunk)
+   - Suitable for a comparison table, FAQ block, or quantified-claim density — say so in the reason
+
+3. **NO OVERLAP.** Compare against the existing content library. If anything in that list addresses the same intent, do NOT propose it. Look at the exact phrasing of existing titles before deciding.
+
+4. **HEADLINES READ LIKE REAL PIECES.** A real strategist would commission it tomorrow.
+   - GOOD: "AI accountants vs. human bookkeepers: when each one is the right hire in 2026"
+   - GOOD: "What is runway? The 4-step calculation and 2026 benchmarks"
+   - BAD: "AI accountant guide"
+   - BAD: "Everything you need to know about runway"
+   - BAD anything with "complete guide" or "ultimate"
+
+5. **KEYWORD IS DISTINCT FROM TITLE.** \`targetKeyword\` is the 2-5 word SEO phrase (e.g. "ai accountant vs human"). \`title\` is the article headline. They are NEVER identical.
+
+6. **VARIETY ACROSS TYPES.** Aim for a balanced mix:
+   - "new" — net-new keyword target. Use this when the brand has nothing in the space.
+   - "refresh" — only when you can name a specific existing-library URL it should update. Otherwise use "new".
+   - "community" — AI citation gap, competitor-led conversation, or social/forum-driven question. Set aiCitationGap=true.
+
+7. **PRIORITIZE AI-CITATION GAPS.** At LEAST half the gaps should set \`aiCitationGap: true\`. These are the opportunities where competitors are getting cited in chat answers but the brand isn't. The reason field must name WHY (question shape, comparison density, AI-extractable structure).
+
+# REASONING FORMAT
+
+For each opportunity, the \`reason\` field must:
+- Be ONE sentence, 60-200 characters.
+- Name the SPECIFIC signal: which competitor URL, which weak query, or which structural property makes this citation-worthy.
+- Be concrete. "Big opportunity" is banned. "Competitor X owns the comparison query but the brand has no equivalent piece; structure invites table extraction by AI engines" is great.
+
+# OUTPUT FORMAT
+
+A JSON array ONLY. No markdown fences. No prose before or after.
+
 [
   {
-    "title": "<article title, 30-90 chars, sounds like a real piece>",
-    "targetKeyword": "<2-5 word primary keyword>",
+    "title": "<article headline, 30-100 chars>",
+    "targetKeyword": "<2-5 word SEO phrase, lowercase, NOT identical to title>",
     "opportunityType": "new" | "refresh" | "community",
     "intent": "informational" | "commercial" | "transactional" | "navigational",
-    "reason": "<one sentence, 60-180 chars, naming the specific gap>",
+    "reason": "<one sentence naming the signal>",
     "competitorUrls": ["<url1>", "<url2>"],
     "aiCitationGap": true | false,
     "trending": true | false
   }
-]`;
+]
+
+# SELF-CHECK BEFORE EMITTING
+
+For every item ask yourself:
+- Is this article distinct from every title in the existing library?
+- Does the reason name a specific signal (URL, query, or structural reason)?
+- Is the title different from the targetKeyword?
+- Would Perplexity quote a paragraph from this piece if it existed?
+- Could a writer start tomorrow on this title without any further input?
+
+If any answer is no, drop the item and replace it.`;
 
 function buildUserPrompt(input: GapInput): string {
   const count = input.desiredCount || 10;
@@ -147,7 +190,12 @@ async function callGemini(
   const client = new GoogleGenerativeAI(apiKey);
   const m = client.getGenerativeModel({
     model,
-    systemInstruction: systemPrompt
+    systemInstruction: systemPrompt,
+    generationConfig: {
+      temperature: 0.85,
+      // JSON only — strict shape per the system prompt.
+      responseMimeType: "application/json"
+    }
   });
   const r = await m.generateContent(userPrompt);
   return r.response.text();
@@ -190,53 +238,85 @@ async function callAnthropic(
 
 // ── Output parsing ──
 function parseGaps(raw: string): IdentifiedGap[] {
-  // Strip code fences if the model wrapped output in them
   let text = raw.trim();
+  // Strip fences in case the model ignored the format instruction.
   text = text.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "");
-  // Find the first [ ... ] block
   const start = text.indexOf("[");
   const end = text.lastIndexOf("]");
   if (start === -1 || end === -1) return [];
+  let parsed: unknown;
   try {
-    const parsed = JSON.parse(text.slice(start, end + 1));
-    if (!Array.isArray(parsed)) return [];
-    const out: IdentifiedGap[] = [];
-    for (const g of parsed) {
-      if (!g || typeof g !== "object") continue;
-      const title = typeof g.title === "string" ? g.title.trim() : "";
-      const targetKeyword =
-        typeof g.targetKeyword === "string" ? g.targetKeyword.trim() : "";
-      if (!title || !targetKeyword) continue;
-      const opportunityType = (
-        ["new", "refresh", "community"].includes(g.opportunityType)
-          ? g.opportunityType
-          : "new"
-      ) as OpportunityType;
-      const intent = (
-        ["informational", "commercial", "transactional", "navigational"].includes(
-          g.intent
-        )
-          ? g.intent
-          : "informational"
-      ) as Intent;
-      out.push({
-        title,
-        targetKeyword,
-        opportunityType,
-        intent,
-        reason:
-          typeof g.reason === "string" ? g.reason.trim() : "Content gap.",
-        competitorUrls: Array.isArray(g.competitorUrls)
-          ? g.competitorUrls.filter((u: unknown) => typeof u === "string")
-          : [],
-        aiCitationGap: Boolean(g.aiCitationGap),
-        trending: Boolean(g.trending)
-      });
-    }
-    return out;
+    parsed = JSON.parse(text.slice(start, end + 1));
   } catch {
     return [];
   }
+  if (!Array.isArray(parsed)) return [];
+
+  const out: IdentifiedGap[] = [];
+  for (const g of parsed) {
+    if (!g || typeof g !== "object") continue;
+    const obj = g as Record<string, unknown>;
+    const title = typeof obj.title === "string" ? obj.title.trim() : "";
+    const targetKeyword =
+      typeof obj.targetKeyword === "string" ? obj.targetKeyword.trim() : "";
+    const reason =
+      typeof obj.reason === "string" ? obj.reason.trim() : "";
+
+    // Quality gates — drop anything that doesn't clear the bar set
+    // by the system prompt rather than silently lowering standards.
+    if (!title || !targetKeyword || !reason) continue;
+    if (title.length < 20 || title.length > 140) continue;
+    if (targetKeyword.split(/\s+/).length > 8) continue;
+    // Title and keyword must differ — that's the whole point of
+    // article-level opportunities vs. keywords.
+    if (title.toLowerCase() === targetKeyword.toLowerCase()) continue;
+    // Reason has to be substantive, not a placeholder.
+    if (reason.length < 30) continue;
+    if (/^(big|huge|major|content)\s+(gap|opportunity)\.?$/i.test(reason))
+      continue;
+    // Banned filler phrases that signal a low-effort headline.
+    if (/(complete|ultimate)\s+guide/i.test(title)) continue;
+    if (/^everything you need to know/i.test(title)) continue;
+
+    const opportunityType: OpportunityType = (
+      ["new", "refresh", "community"].includes(obj.opportunityType as string)
+        ? (obj.opportunityType as OpportunityType)
+        : "new"
+    );
+    const intent: Intent = (
+      ["informational", "commercial", "transactional", "navigational"].includes(
+        obj.intent as string
+      )
+        ? (obj.intent as Intent)
+        : "informational"
+    );
+
+    out.push({
+      title,
+      targetKeyword: targetKeyword.toLowerCase(),
+      opportunityType,
+      intent,
+      reason,
+      competitorUrls: Array.isArray(obj.competitorUrls)
+        ? (obj.competitorUrls as unknown[]).filter(
+            (u): u is string => typeof u === "string" && u.startsWith("http")
+          )
+        : [],
+      aiCitationGap: Boolean(obj.aiCitationGap),
+      trending: Boolean(obj.trending)
+    });
+  }
+
+  // Deduplicate within the same response — same keyword OR same title.
+  const seen = new Set<string>();
+  return out.filter((g) => {
+    const k = g.title.toLowerCase().trim();
+    const tk = g.targetKeyword.toLowerCase().trim();
+    if (seen.has(k) || seen.has(tk)) return false;
+    seen.add(k);
+    seen.add(tk);
+    return true;
+  });
 }
 
 // ── Mock fallback ──

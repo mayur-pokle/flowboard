@@ -5,7 +5,8 @@ import {
   TrendingUp,
   CheckCircle2,
   Loader2,
-  ChevronRight
+  ChevronRight,
+  AlertTriangle
 } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import {
@@ -112,8 +113,10 @@ export function OpportunityCard({
         );
       })()}
 
-      {/* Signals — trending + AI citation gap */}
-      {(opp.trending || opp.aiCitationGap) && (
+      {/* Signals — trending + AI citation gap + cannibalization risk */}
+      {(opp.trending ||
+        opp.aiCitationGap ||
+        (opp.cannibalizingPages && opp.cannibalizingPages.length > 0)) && (
         <div className="flex items-center gap-1.5 mb-2 flex-wrap">
           {opp.trending ? (
             <span
@@ -135,6 +138,18 @@ export function OpportunityCard({
             >
               <Sparkles className="size-3" />
               AI citation gap
+            </span>
+          ) : null}
+          {opp.cannibalizingPages && opp.cannibalizingPages.length > 0 ? (
+            <span
+              className={cn(
+                "badge text-[10px] inline-flex items-center gap-1",
+                "bg-amber-50 text-amber-800 ring-1 ring-inset ring-amber-200"
+              )}
+              title={`Overlaps with ${opp.cannibalizingPages.length} published page${opp.cannibalizingPages.length === 1 ? "" : "s"}`}
+            >
+              <AlertTriangle className="size-3" />
+              Cannibalization risk
             </span>
           ) : null}
         </div>

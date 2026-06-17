@@ -10,7 +10,8 @@ import {
   Undo2,
   Search as SearchIcon,
   Wand2,
-  Loader2
+  Loader2,
+  Trash2
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -67,6 +68,33 @@ export default function DiscoveryKanbanPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [identifying]);
 
+  // ── Clear all ──
+  const [clearing, setClearing] = useState(false);
+  async function clearAll() {
+    if (
+      !window.confirm(
+        "Clear every opportunity on the board? This permanently deletes all rows — Intake, New, In-progress, Done, and Rejected. You'll start from a clean slate."
+      )
+    )
+      return;
+    setClearing(true);
+    try {
+      const res = await fetch("/api/discoveries/clear-all", {
+        method: "POST"
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Clear failed");
+      toast(`Cleared ${json.cleared} opportunities`, "success");
+      setItems([]);
+      setRejected([]);
+      setRejectStack([]);
+    } catch (err) {
+      toast((err as Error).message, "error");
+    } finally {
+      setClearing(false);
+    }
+  }
+
   async function identifyGaps() {
     setIdentifying(true);
     try {
@@ -105,12 +133,9 @@ export default function DiscoveryKanbanPage() {
       setItems(all.filter((o) => o.kanbanColumn !== "rejected"));
       setRejected(all.filter((o) => o.kanbanColumn === "rejected"));
       setSampleCount(json.sampleCount || 0);
-      // If the table is empty (no rows + no sample), auto-seed.
-      if (all.length === 0) {
-        await fetch("/api/discoveries/seed", { method: "POST" });
-        await reload();
-        return;
-      }
+      // No auto-seeding on empty — the strategist starts from a clean
+      // slate and uses "Identify gaps" (Gemini) or connected sources
+      // to populate the board. An empty board is a deliberate state.
     } catch (err) {
       toast((err as Error).message, "error");
     } finally {
@@ -298,7 +323,7 @@ export default function DiscoveryKanbanPage() {
             <Button
               variant="primary"
               onClick={() => void identifyGaps()}
-              disabled={identifying}
+              disabled={identifying || clearing}
             >
               {identifying ? (
                 <Loader2 className="size-4 animate-spin" />
@@ -310,6 +335,21 @@ export default function DiscoveryKanbanPage() {
             <Link href="/settings/sources">
               <Button variant="secondary">Manage sources</Button>
             </Link>
+            {items.length + rejected.length > 0 ? (
+              <button
+                onClick={() => void clearAll()}
+                disabled={clearing || identifying}
+                className="h-9 px-3 rounded-md text-xs text-ink-500 hover:text-rose-600 hover:bg-rose-50 inline-flex items-center gap-1.5 transition disabled:opacity-50"
+                title="Delete every opportunity and start fresh"
+              >
+                {clearing ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <Trash2 className="size-3.5" />
+                )}
+                Clear all
+              </button>
+            ) : null}
           </div>
         </div>
 
@@ -473,6 +513,10 @@ export default function DiscoveryKanbanPage() {
           opportunity={openOpp}
           onClose={() => setOpenId(null)}
           onRefresh={reload}
+          onDeleted={(id) => {
+            setItems((prev) => prev.filter((o) => o.id !== id));
+            setRejected((prev) => prev.filter((o) => o.id !== id));
+          }}
         />
       ) : null}
     </div>

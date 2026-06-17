@@ -14,7 +14,9 @@ import {
   Save,
   AlertCircle,
   ExternalLink,
-  ArrowRight
+  ArrowRight,
+  Undo2,
+  Trash2
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -43,9 +45,17 @@ interface Props {
   opportunity: Opportunity;
   onClose: () => void;
   onRefresh: () => void;
+  // Optional — only available from the Kanban page. Used to optimize
+  // out the panel after destructive actions so the UI stays snappy.
+  onDeleted?: (id: string) => void;
 }
 
-export function DetailPanel({ opportunity, onClose, onRefresh }: Props) {
+export function DetailPanel({
+  opportunity,
+  onClose,
+  onRefresh,
+  onDeleted
+}: Props) {
   const [tab, setTab] = useState<Tab>(
     opportunity.contentMarkdown
       ? "content"
@@ -54,6 +64,13 @@ export function DetailPanel({ opportunity, onClose, onRefresh }: Props) {
       : "brief"
   );
   const [briefMd, setBriefMd] = useState(opportunity.briefMarkdown || "");
+  // Local copy of briefData — updated immediately when generateBrief
+  // returns. We render off this rather than waiting for the props
+  // refresh through onRefresh() so the panel paints the brief the
+  // moment it's available.
+  const [briefDataLocal, setBriefDataLocal] = useState(
+    opportunity.briefData
+  );
   const [contentMd, setContentMd] = useState(
     opportunity.contentMarkdown || ""
   );
@@ -65,11 +82,13 @@ export function DetailPanel({ opportunity, onClose, onRefresh }: Props) {
 
   useEffect(() => {
     setBriefMd(opportunity.briefMarkdown || "");
+    setBriefDataLocal(opportunity.briefData);
     setContentMd(opportunity.contentMarkdown || "");
     setQuality(opportunity.contentChecks);
   }, [
     opportunity.id,
     opportunity.briefMarkdown,
+    opportunity.briefData,
     opportunity.contentMarkdown,
     opportunity.contentChecks
   ]);
@@ -96,7 +115,10 @@ export function DetailPanel({ opportunity, onClose, onRefresh }: Props) {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Brief gen failed");
-      setBriefMd(json.briefMarkdown);
+      // Update local render state IMMEDIATELY so the brief appears
+      // without waiting for the parent's refetch to round-trip.
+      setBriefMd(json.briefMarkdown || "");
+      setBriefDataLocal(json.briefData || briefDataLocal);
       toast("Brief generated", "success");
       onRefresh();
     } catch (err) {
@@ -208,6 +230,40 @@ export function DetailPanel({ opportunity, onClose, onRefresh }: Props) {
     }
   }
 
+  async function moveBack() {
+    try {
+      const res = await fetch(`/api/discoveries/${opportunity.id}/move-back`, {
+        method: "POST"
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Move back failed");
+      toast(`Moved back to ${json.kanbanColumn.replace("_", " ")}`, "success");
+      onRefresh();
+    } catch (err) {
+      toast((err as Error).message, "error");
+    }
+  }
+
+  async function deletePermanently() {
+    if (
+      !window.confirm(
+        `Permanently delete "${opportunity.query}"? This can't be undone.`
+      )
+    )
+      return;
+    try {
+      const res = await fetch(`/api/discoveries/${opportunity.id}`, {
+        method: "DELETE"
+      });
+      if (!res.ok) throw new Error("Delete failed");
+      toast("Opportunity deleted", "success");
+      onDeleted?.(opportunity.id);
+      onClose();
+    } catch (err) {
+      toast((err as Error).message, "error");
+    }
+  }
+
   const tone = scoreTone(opportunity.score);
   const toneCls = SCORE_TONE_CLASSES[tone];
   const breakdown = opportunity.scoreBreakdown;
@@ -270,13 +326,32 @@ export function DetailPanel({ opportunity, onClose, onRefresh }: Props) {
               </p>
             ) : null}
           </div>
-          <button
-            onClick={onClose}
-            className="size-8 grid place-items-center rounded-md hover:bg-ink-100 text-ink-500 shrink-0"
-            aria-label="Close"
-          >
-            <X className="size-4" />
-          </button>
+          <div className="flex items-center gap-1 shrink-0">
+            {opportunity.kanbanColumn !== "intake" &&
+            opportunity.kanbanColumn !== "rejected" ? (
+              <button
+                onClick={moveBack}
+                title="Move card back one column"
+                className="size-8 grid place-items-center rounded-md hover:bg-ink-100 text-ink-500"
+              >
+                <Undo2 className="size-4" />
+              </button>
+            ) : null}
+            <button
+              onClick={deletePermanently}
+              title="Delete permanently"
+              className="size-8 grid place-items-center rounded-md hover:bg-rose-50 hover:text-rose-600 text-ink-500"
+            >
+              <Trash2 className="size-4" />
+            </button>
+            <button
+              onClick={onClose}
+              className="size-8 grid place-items-center rounded-md hover:bg-ink-100 text-ink-500"
+              aria-label="Close"
+            >
+              <X className="size-4" />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -409,6 +484,7 @@ export function DetailPanel({ opportunity, onClose, onRefresh }: Props) {
           {tab === "brief" ? (
             <BriefTab
               opportunity={opportunity}
+              briefData={briefDataLocal}
               briefMd={briefMd}
               setBriefMd={setBriefMd}
               editing={editing === "brief"}
@@ -418,9 +494,9 @@ export function DetailPanel({ opportunity, onClose, onRefresh }: Props) {
               onSave={saveBrief}
               onGoContent={() => {
                 setTab("content");
-                if (!opportunity.contentMarkdown) void generateContent();
+                if (!contentMd) void generateContent();
               }}
-              hasBrief={Boolean(opportunity.briefData)}
+              hasBrief={Boolean(briefDataLocal) || briefMd.trim().length > 0}
             />
           ) : tab === "content" ? (
             <ContentTab
@@ -434,8 +510,8 @@ export function DetailPanel({ opportunity, onClose, onRefresh }: Props) {
               onRegenerate={regenerateContent}
               onSave={saveContent}
               onCopy={copyMarkdown}
-              hasContent={Boolean(opportunity.contentMarkdown)}
-              hasBrief={Boolean(opportunity.briefData)}
+              hasContent={contentMd.trim().length > 0}
+              hasBrief={Boolean(briefDataLocal) || briefMd.trim().length > 0}
             />
           ) : (
             <QualityTab quality={quality} />
@@ -583,6 +659,7 @@ function TabButton({
 // ── Brief tab ──
 function BriefTab({
   opportunity,
+  briefData,
   briefMd,
   setBriefMd,
   editing,
@@ -594,6 +671,7 @@ function BriefTab({
   hasBrief
 }: {
   opportunity: Opportunity;
+  briefData: Opportunity["briefData"];
   briefMd: string;
   setBriefMd: (s: string) => void;
   editing: boolean;
@@ -639,11 +717,11 @@ function BriefTab({
     );
   }
 
-  const brief = opportunity.briefData!;
+  const brief = briefData;
   return (
     <div className="space-y-4">
       {/* Cannibalization warning — BEFORE the brief */}
-      {brief.cannibalization ? (
+      {brief?.cannibalization ? (
         <div className="rounded-lg border border-amber-300 bg-amber-50 p-3">
           <div className="flex items-start gap-2">
             <AlertTriangle className="size-4 text-amber-600 shrink-0 mt-0.5" />
@@ -675,7 +753,7 @@ function BriefTab({
       ) : null}
 
       {/* AI citation angle box (purple) */}
-      {brief.aiCitationAngle ? (
+      {brief?.aiCitationAngle ? (
         <div
           className={cn("rounded-lg p-3", AI_CITATION_BOX_CLASS)}
         >

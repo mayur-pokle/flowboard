@@ -3,7 +3,8 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import {
   discoveredOpportunities,
-  settings
+  settings,
+  existingContent
 } from "@/db/schema";
 import { withAuth, serverError } from "@/lib/api";
 import {
@@ -11,8 +12,19 @@ import {
   type ProviderName
 } from "@/lib/discovery-content";
 import { runQualityChecks } from "@/lib/content-quality";
-import type { BriefData } from "@/lib/brief-generator";
-import type { OpportunityType } from "@/lib/opportunity-classifier";
+import {
+  buildBriefData,
+  renderBriefAsMarkdown,
+  findCannibalizationMatches,
+  type BriefData
+} from "@/lib/brief-generator";
+import {
+  classifyOpportunity,
+  type Intent,
+  type ScoreBreakdown,
+  type Priority,
+  type OpportunityType
+} from "@/lib/opportunity-classifier";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -36,19 +48,98 @@ export const POST = withAuth(
       if (!opp) {
         return NextResponse.json({ error: "Not found" }, { status: 404 });
       }
-      if (!opp.briefData) {
-        return NextResponse.json(
-          { error: "Generate the brief first." },
-          { status: 400 }
-        );
-      }
-      const brief = opp.briefData as BriefData;
-
       const [brand] = await db
         .select()
         .from(settings)
         .where(eq(settings.id, "workspace"))
         .limit(1);
+
+      // ── Self-heal: if the brief hasn't been generated yet, build it
+      // inline. Brief gen is deterministic + cheap (<2s), so it's
+      // safer to always have one than to bounce the user back with
+      // "Generate the brief first" and force a second click.
+      let brief = opp.briefData as BriefData | null;
+      if (!brief) {
+        const library = await db.select().from(existingContent);
+        const cannibalization =
+          (opp.cannibalizingPages as Array<{
+            url: string;
+            title: string;
+          }> | null) ??
+          findCannibalizationMatches(
+            opp.query,
+            library.map((l) => ({
+              url: l.url,
+              title: l.title,
+              targetKeyword: l.targetKeyword
+            }))
+          );
+
+        // Re-derive classification if missing too — old GSC rows.
+        let intent = (opp.intent as Intent | null) || "informational";
+        let breakdown =
+          (opp.scoreBreakdown as ScoreBreakdown | null) ?? null;
+        let oppTypeLocal =
+          (opp.opportunityType as OpportunityType | null) || "new";
+        let priority = (opp.priority as Priority | null) || "P1";
+        let totalScore = opp.score;
+        if (!breakdown) {
+          const m = (opp.metrics as Record<string, number> | null) || {};
+          const classified = classifyOpportunity({
+            source: opp.source,
+            query: opp.query,
+            impressions: m.impressions,
+            position: m.position,
+            ctr: m.ctr,
+            volume: m.volume,
+            difficulty: m.difficulty,
+            competitorGapScore: opp.competitorGapScore || undefined,
+            weeklyImpressions: opp.weeklyImpressions || undefined,
+            previousWeekImpressions: opp.previousWeekImpressions || undefined,
+            cannibalizingPageCount: cannibalization.length
+          });
+          intent = classified.intent;
+          breakdown = classified.scoreBreakdown;
+          oppTypeLocal = classified.opportunityType;
+          priority = classified.priority;
+          totalScore = classified.totalScore;
+        }
+
+        const metricsBagForBrief =
+          (opp.metrics as Record<string, unknown> | null) || {};
+        const targetKwForBrief =
+          typeof metricsBagForBrief.targetKeyword === "string" &&
+          (metricsBagForBrief.targetKeyword as string).trim().length > 0
+            ? (metricsBagForBrief.targetKeyword as string).trim()
+            : opp.query;
+
+        brief = buildBriefData({
+          query: targetKwForBrief,
+          articleTitle: opp.query,
+          intent,
+          opportunityType: oppTypeLocal,
+          priority,
+          scoreBreakdown: breakdown,
+          totalScore,
+          aiCitationGap: opp.aiCitationGap ?? false,
+          competitorUrls: (opp.competitorUrls as string[] | null) ?? [],
+          competitorGapScore: opp.competitorGapScore ?? 0,
+          aiCitationsCited: (opp.aiCitationsCited as string[] | null) ?? [],
+          cannibalizingPages: cannibalization,
+          brandPrimaryCta: brand?.primaryCta || undefined
+        });
+        const briefMarkdown = renderBriefAsMarkdown(brief, opp.query);
+        await db
+          .update(discoveredOpportunities)
+          .set({
+            briefData: brief,
+            briefMarkdown,
+            briefGeneratedAt: new Date(),
+            cannibalizingPages: cannibalization,
+            updatedAt: new Date()
+          })
+          .where(eq(discoveredOpportunities.id, ctx.params.id));
+      }
 
       const providerByType: Record<OpportunityType, ProviderName> = {
         new: (brand?.newOppProvider as ProviderName | null) || "openai",

@@ -401,7 +401,32 @@ function parseTrailers(text: string): {
   meta: string | null;
   titles: string[];
 } {
-  const lines = text.split("\n");
+  // Some models wrap the whole article in a ```markdown … ``` fence
+  // despite the instruction not to. Without stripping, the renderer
+  // treats the entire article as a single code block → looks like a
+  // blank/empty card body to the user. Strip leading + trailing fences
+  // (only when they wrap the entire response, not inline code blocks).
+  let normalized = text.trim();
+  const leadingFence = normalized.match(/^```(?:markdown|md)?\s*\n/i);
+  if (leadingFence) {
+    const closingIdx = normalized.lastIndexOf("```");
+    if (closingIdx > leadingFence[0].length) {
+      normalized = normalized
+        .slice(leadingFence[0].length, closingIdx)
+        .trim();
+    }
+  }
+  // Also handle the case where there's no language tag (just ``` … ```)
+  if (normalized.startsWith("```") && normalized.endsWith("```")) {
+    const inner = normalized.slice(3, -3).trim();
+    // Only strip if the inner content has markdown-ish content (heading
+    // or paragraph). If it looks like real code, leave it alone.
+    if (/^#\s|^[A-Z]/.test(inner.split("\n")[0])) {
+      normalized = inner;
+    }
+  }
+
+  const lines = normalized.split("\n");
   let meta: string | null = null;
   let titles: string[] = [];
   const bodyLines: string[] = [];

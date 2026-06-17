@@ -113,8 +113,22 @@ export function DetailPanel({
       const res = await fetch(`/api/discoveries/${opportunity.id}/brief`, {
         method: "POST"
       });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Brief gen failed");
+      let json: {
+        ok?: boolean;
+        error?: string;
+        briefMarkdown?: string;
+        briefData?: Opportunity["briefData"];
+      } = {};
+      try {
+        json = await res.json();
+      } catch {
+        // ignore
+      }
+      if (!res.ok) {
+        const detail =
+          json.error || (await res.text().catch(() => "")) || res.statusText;
+        throw new Error(`Brief generation failed (${res.status}): ${detail}`);
+      }
       // Update local render state IMMEDIATELY so the brief appears
       // without waiting for the parent's refetch to round-trip.
       setBriefMd(json.briefMarkdown || "");
@@ -134,18 +148,42 @@ export function DetailPanel({
       const res = await fetch(`/api/discoveries/${opportunity.id}/content`, {
         method: "POST"
       });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Content gen failed");
-      setContentMd(json.contentMarkdown);
-      setQuality(json.quality);
+      let json: {
+        ok?: boolean;
+        error?: string;
+        contentMarkdown?: string;
+        provider?: string;
+        isTemplate?: boolean;
+        warnings?: string[];
+        quality?: typeof quality;
+      } = {};
+      try {
+        json = await res.json();
+      } catch {
+        // ignore — empty response will fall through
+      }
+      if (!res.ok) {
+        // Surface the actual server error so the user knows whether
+        // it's a missing key, schema mismatch, or 5xx — not a generic
+        // "Content gen failed".
+        const detail = json.error || (await res.text().catch(() => "")) || res.statusText;
+        throw new Error(`Content generation failed (${res.status}): ${detail}`);
+      }
+      setContentMd(json.contentMarkdown || "");
+      setQuality((json.quality as typeof quality) || null);
       setTab("content");
       if (json.isTemplate) {
         toast(
-          "Template generated (no LLM available). Fill in the [WRITE] blocks.",
+          "Template returned (no LLM available). Fill in the [WRITE] blocks — set GEMINI_API_KEY / OPENAI_API_KEY for real output.",
           "info"
         );
       } else {
         toast(`Article ready · ${json.provider}`, "success");
+      }
+      // Surface non-fatal warnings (failed-provider notes) as separate toasts
+      // so the user knows which provider in the chain actually ran.
+      if (json.warnings && json.warnings.length > 0) {
+        for (const w of json.warnings.slice(0, 2)) toast(w, "info");
       }
       onRefresh();
     } catch (err) {

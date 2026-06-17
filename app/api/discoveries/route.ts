@@ -65,6 +65,11 @@ export const GET = withAuth(async (_user, req) => {
         aiCitationsCited: r.aiCitationsCited ?? [],
         cannibalizingPages: r.cannibalizingPages ?? [],
         briefData: r.briefData ?? null,
+        // CRITICAL: the panel renders off briefMarkdown / contentMarkdown.
+        // Without these two fields, reopening a card with a generated brief
+        // showed an empty body even though briefData was populated.
+        briefMarkdown: r.briefMarkdown ?? null,
+        contentMarkdown: r.contentMarkdown ?? null,
         contentChecks: r.contentChecks ?? null,
         isSample: r.isSample ?? false,
         // Legacy

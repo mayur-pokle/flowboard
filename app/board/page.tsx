@@ -1,17 +1,15 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect } from "react";
-import { Lightbulb, Sparkles } from "lucide-react";
 import { useStore, useHasHydrated } from "@/lib/store";
 import { KanbanBoard } from "@/components/KanbanBoard";
 import { CardDetailPanel } from "@/components/CardDetailPanel";
-import { Button } from "@/components/ui/Button";
 import type { Task } from "@/lib/types";
 
 export default function BoardPage() {
   const hydrated = useHasHydrated();
   const tasks = useStore((s) => s.tasks);
+  const topics = useStore((s) => s.topics);
   const selectedTaskId = useStore((s) => s.selectedTaskId);
   const selectTask = useStore((s) => s.selectTask);
 
@@ -31,31 +29,26 @@ export default function BoardPage() {
   }
 
   if (!hydrated) {
-    return <Header title="Kanban" subtitle="Loading…" />;
+    return <Header title="Content Pipeline" subtitle="Loading…" />;
   }
+
+  const ideaCount = topics.length;
+  const taskCount = tasks.length;
+  const subtitle =
+    ideaCount + taskCount === 0
+      ? "Generate ideas to populate the pipeline"
+      : `${ideaCount} idea${ideaCount === 1 ? "" : "s"} · ${taskCount} card${taskCount === 1 ? "" : "s"} on the board`;
 
   return (
     <div className="flex-1 min-w-0 min-h-0 flex flex-col">
-      <Header
-        title="Execution Board"
-        subtitle={
-          tasks.length === 0
-            ? "Move ideas from the Ideas page to start tracking work"
-            : `${tasks.length} card${tasks.length === 1 ? "" : "s"} on the board`
-        }
-        right={
-          <Link href="/ideas">
-            <Button variant="primary">
-              <Lightbulb className="size-4" />
-              Get more ideas
-            </Button>
-          </Link>
-        }
-      />
+      <Header title="Content Pipeline" subtitle={subtitle} />
 
       <div className="flex-1 min-h-0 flex">
         <div className="flex-1 min-w-0">
-          {tasks.length === 0 ? <EmptyBoard /> : <KanbanBoard onCardClick={handleCardClick} />}
+          {/* The Ideas column is always rendered as part of the kanban — no
+              separate empty state. Even with zero tasks, the strategist sees
+              the Ideas column with a Generate CTA. */}
+          <KanbanBoard onCardClick={handleCardClick} />
         </div>
       </div>
 
@@ -73,12 +66,10 @@ export default function BoardPage() {
 
 function Header({
   title,
-  subtitle,
-  right
+  subtitle
 }: {
   title: string;
   subtitle?: string;
-  right?: React.ReactNode;
 }) {
   return (
     <div className="px-8 h-16 flex items-center justify-between border-b border-ink-200 bg-white shrink-0">
@@ -89,31 +80,6 @@ function Header({
         {subtitle ? (
           <p className="text-xs text-ink-500 leading-tight">{subtitle}</p>
         ) : null}
-      </div>
-      {right}
-    </div>
-  );
-}
-
-function EmptyBoard() {
-  return (
-    <div className="grid place-items-center h-full">
-      <div className="max-w-md text-center py-16 px-6">
-        <div className="size-12 rounded-xl bg-brand-50 text-brand-600 grid place-items-center mx-auto mb-4">
-          <Sparkles className="size-6" />
-        </div>
-        <h2 className="text-xl font-semibold text-ink-900 mb-1">
-          Your board is empty
-        </h2>
-        <p className="text-base text-ink-600 mb-6">
-          Generate AI ideas, pick the ones you like, and they'll show up here as Kanban cards.
-        </p>
-        <Link href="/ideas">
-          <Button variant="primary">
-            <Lightbulb className="size-4" />
-            Generate content ideas
-          </Button>
-        </Link>
       </div>
     </div>
   );

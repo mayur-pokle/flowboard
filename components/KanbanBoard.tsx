@@ -14,6 +14,7 @@ import {
 import { useStore } from "@/lib/store";
 import { KanbanColumn } from "@/components/KanbanColumn";
 import { KanbanCard } from "@/components/KanbanCard";
+import { IdeasColumn } from "@/components/IdeasColumn";
 import type { Status, Task } from "@/lib/types";
 
 const COLUMNS: { status: Status; title: string }[] = [
@@ -57,30 +58,37 @@ export function KanbanBoard({
   }
 
   return (
-    <DndContext
-      sensors={sensors}
-      collisionDetection={closestCenter}
-      onDragStart={handleDragStart}
-      onDragEnd={handleDragEnd}
-    >
-      <div className="flex gap-4 px-8 py-6 overflow-x-auto scrollbar-thin h-full">
-        {COLUMNS.map((c) => (
-          <KanbanColumn
-            key={c.status}
-            status={c.status}
-            title={c.title}
-            tasks={byStatus[c.status]}
-            onCardClick={onCardClick}
-          />
-        ))}
-      </div>
-      <DragOverlay>
-        {activeTask ? (
-          <div className="w-[360px]">
-            <KanbanCard task={activeTask} isDragOverlay />
-          </div>
-        ) : null}
-      </DragOverlay>
-    </DndContext>
+    // Outer flex row carries BOTH the Ideas column (no dnd) and the
+    // DndContext-wrapped pipeline columns. Putting Ideas outside the
+    // DndContext means topics never participate in dnd — Accept moves
+    // them via an explicit API call, not a drag.
+    <div className="flex gap-4 px-8 py-6 overflow-x-auto scrollbar-thin h-full">
+      <IdeasColumn />
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+      >
+        <div className="flex gap-4 h-full">
+          {COLUMNS.map((c) => (
+            <KanbanColumn
+              key={c.status}
+              status={c.status}
+              title={c.title}
+              tasks={byStatus[c.status]}
+              onCardClick={onCardClick}
+            />
+          ))}
+        </div>
+        <DragOverlay>
+          {activeTask ? (
+            <div className="w-[360px]">
+              <KanbanCard task={activeTask} isDragOverlay />
+            </div>
+          ) : null}
+        </DragOverlay>
+      </DndContext>
+    </div>
   );
 }

@@ -4,7 +4,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
 import {
-  Wand2,
   KanbanSquare,
   Settings,
   LogOut,
@@ -13,10 +12,11 @@ import {
 import { cn } from "@/lib/utils";
 import { useStore, useHasHydrated } from "@/lib/store";
 
+// AI Resources and Kanban merged — generation lives inside the
+// Content Pipeline page as the leftmost "Ideas" column.
 const items = [
-  { href: "/ideas", label: "AI Resources", icon: Wand2 },
   { href: "/discovery", label: "AI Discovery", icon: Telescope },
-  { href: "/board", label: "Kanban", icon: KanbanSquare },
+  { href: "/board", label: "Content Pipeline", icon: KanbanSquare },
   { href: "/settings/api", label: "Settings", icon: Settings }
 ];
 
@@ -54,11 +54,11 @@ export function Sidebar() {
             pathname === item.href ||
             (item.href !== "/" && pathname?.startsWith(item.href));
           const Icon = item.icon;
+          // Content Pipeline badge counts BOTH unreviewed ideas and
+          // tasks on the board — that's the funnel size at a glance.
           const badge =
-            hydrated && item.href === "/ideas"
-              ? topicCount
-              : hydrated && item.href === "/board"
-              ? taskCount
+            hydrated && item.href === "/board"
+              ? topicCount + taskCount
               : null;
           return (
             <Link

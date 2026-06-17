@@ -310,7 +310,7 @@ export default function DiscoveryKanbanPage() {
             <div className="flex items-center gap-2 mb-1">
               <Telescope className="size-4 text-ink-500" />
               <h1 className="text-base font-semibold text-ink-900 leading-tight">
-                Discovery
+                AI Discovery
               </h1>
             </div>
             <p className="text-xs text-ink-500 leading-tight max-w-2xl">

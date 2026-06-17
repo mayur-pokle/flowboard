@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
 import {
-  Lightbulb,
+  Wand2,
   KanbanSquare,
   Settings,
   LogOut,
@@ -14,8 +14,8 @@ import { cn } from "@/lib/utils";
 import { useStore, useHasHydrated } from "@/lib/store";
 
 const items = [
-  { href: "/ideas", label: "Ideas", icon: Lightbulb },
-  { href: "/discovery", label: "Discovery", icon: Telescope },
+  { href: "/ideas", label: "AI Resources", icon: Wand2 },
+  { href: "/discovery", label: "AI Discovery", icon: Telescope },
   { href: "/board", label: "Kanban", icon: KanbanSquare },
   { href: "/settings/api", label: "Settings", icon: Settings }
 ];

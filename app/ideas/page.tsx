@@ -268,7 +268,7 @@ export default function IdeasPage() {
   }, [hydrated]);
 
   if (!hydrated) {
-    return <PageHeader title="Ideas" subtitle="Loading…" />;
+    return <PageHeader title="AI Resources" subtitle="Loading…" />;
   }
 
   return (
@@ -276,7 +276,7 @@ export default function IdeasPage() {
     // scrolls instead of letting the wrapper grow with the content.
     <div className="flex-1 min-w-0 min-h-0 flex flex-col">
       <PageHeader
-        title="Content Opportunity Ideas"
+        title="AI Resources"
         subtitle={
           lastGeneratedAt
             ? `Last batch generated ${formatDate(lastGeneratedAt)} · ${

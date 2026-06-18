@@ -43,6 +43,7 @@ import {
   type PanelHeaderBadge,
   type PanelTab
 } from "@/components/pipeline/PipelinePanel";
+import { DiscoveryPublishPromptSection } from "./DiscoveryPublishPromptSection";
 
 type Tab = "brief" | "content" | "quality";
 
@@ -945,6 +946,10 @@ function ContentTab({
         Reopening the content view always shows the stored draft.
         Regeneration overwrites it after confirmation.
       </p>
+
+      {/* Publish-to-Webflow prompt — same shared card AI Resources uses.
+          Only shown once content has been generated. */}
+      <DiscoveryPublishPromptSection opportunity={opportunity} />
     </div>
   );
 }

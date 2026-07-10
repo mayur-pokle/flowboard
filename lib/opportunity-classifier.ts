@@ -20,14 +20,20 @@ export type OpportunityType = "new" | "refresh" | "community";
 export type Priority = "P0" | "P1" | "P2";
 
 // 6-pillar breakdown. Sums to ≤100. Each ceiling stays fixed so the UI
-// can render the same scale on every card.
+// can render the same scale on every card. Field names are the internal
+// identifiers — the Discovery panel renders user-facing labels + specs
+// via a separate mapping (see components/discovery/DetailPanel.tsx).
 //
-//   searchDemand            (0-20) impressions / volume signal
-//   trendingVelocity        (0-15) week-over-week growth
-//   competitorGap           (0-20) how much room there is to beat them
-//   aiCitationGap           (0-20) competitors cited by AI, we're not
-//   conversionFit           (0-15) intent → likelihood to convert
-//   cannibalizationClarity  (0-10) inverse cannibalization risk
+// Internal name              Max   Display label
+// ────────────────────────  ────  ─────────────────────────────────
+//   searchDemand              20   "AI Query Volume"
+//   trendingVelocity          15   "Answer Likelihood"
+//   competitorGap             20   "Commercial / Solution Intent"
+//   aiCitationGap             15   "AI Citation Gap"
+//   conversionFit             15   "Authority Leverage"
+//   cannibalizationClarity    15   "Content Coverage Gap"
+// ────────────────────────  ────
+// Total:                    100
 export interface ScoreBreakdown {
   searchDemand: number;
   trendingVelocity: number;
@@ -209,22 +215,23 @@ export function computeScoreBreakdown(input: ScoreInputs): ScoreBreakdown {
   }
   competitorGap = Math.max(0, Math.min(20, competitorGap));
 
-  // 4. AI citation gap (0-20)
-  const aiCitationGap = input.aiCitationGap ? 18 : 0;
+  // 4. AI citation gap (0-15) — displayed as "AI Citation Gap"
+  const aiCitationGap = input.aiCitationGap ? 13 : 0;
 
-  // 5. Conversion fit (0-15)
+  // 5. Conversion fit (0-15) — displayed as "Authority Leverage"
   let conversionFit = 5;
   if (input.intent === "commercial") conversionFit = 10;
   else if (input.intent === "transactional") conversionFit = 13;
   else if (input.intent === "navigational") conversionFit = 4;
   else conversionFit = 6;
 
-  // 6. Cannibalization clarity (0-10) — higher = clearer slot
-  let cannibalizationClarity = 10;
+  // 6. Cannibalization clarity (0-15) — displayed as "Content Coverage Gap"
+  // higher = clearer slot / bigger coverage gap for us to own.
+  let cannibalizationClarity = 15;
   if (input.cannibalizingPageCount && input.cannibalizingPageCount > 0) {
     cannibalizationClarity = Math.max(
       0,
-      10 - input.cannibalizingPageCount * 3
+      15 - input.cannibalizingPageCount * 4
     );
   }
 
@@ -256,6 +263,53 @@ export function derivePriority(score: number): Priority {
   if (score >= 75) return "P0";
   if (score >= 50) return "P1";
   return "P2";
+}
+
+// ── Priority tier label ──────────────────────────────────────────────
+// 5-tier label used on the AI Discovery detail-panel speedometer.
+// The tier + descriptor combo shows the strategist WHY the score sits
+// where it does (e.g. "P2 Strong Priority" at 75.5) — more legible
+// than raw P0/P1/P2 or a bare number.
+//
+// Thresholds calibrated so a score of 75-79 reads "P2 Strong Priority"
+// (matches the reference design), 80-89 reads "P1 High Priority", etc.
+export type PriorityTier = {
+  code: "P0" | "P1" | "P2" | "P3" | "P4";
+  descriptor: string;
+  // Combined label — what the panel renders under the speedometer.
+  label: string;
+};
+
+export function derivePriorityTier(score: number): PriorityTier {
+  if (score >= 90)
+    return {
+      code: "P0",
+      descriptor: "Critical Priority",
+      label: "P0 Critical Priority"
+    };
+  if (score >= 80)
+    return {
+      code: "P1",
+      descriptor: "High Priority",
+      label: "P1 High Priority"
+    };
+  if (score >= 65)
+    return {
+      code: "P2",
+      descriptor: "Strong Priority",
+      label: "P2 Strong Priority"
+    };
+  if (score >= 50)
+    return {
+      code: "P3",
+      descriptor: "Solid Priority",
+      label: "P3 Solid Priority"
+    };
+  return {
+    code: "P4",
+    descriptor: "Standard Priority",
+    label: "P4 Standard Priority"
+  };
 }
 
 // ── Trending detection ───────────────────────────────────────────────

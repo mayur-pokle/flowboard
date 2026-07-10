@@ -44,6 +44,7 @@ import {
   type PanelTab
 } from "@/components/pipeline/PipelinePanel";
 import { DiscoveryPublishPromptSection } from "./DiscoveryPublishPromptSection";
+import { derivePriorityTier } from "@/lib/opportunity-classifier";
 
 type Tab = "brief" | "content" | "quality";
 
@@ -476,37 +477,67 @@ export function DetailPanel({
         value: opportunity.score,
         label: "Priority",
         priorityLabel: opportunity.priority,
+        // Full tier label + backend note match the reference design.
+        tierLabel: derivePriorityTier(opportunity.score).label,
+        subtext: `Backend score: ${opportunity.score.toFixed(1)}`,
+        headline: "Step 2: Priority speedometer",
         bars: [
           {
-            label: "Search demand",
+            label: "AI Query Volume",
             value: breakdown?.searchDemand ?? 0,
-            max: 20
-          },
-          {
-            label: "Trending velocity",
-            value: breakdown?.trendingVelocity ?? 0,
-            max: 15
-          },
-          {
-            label: "Competitor gap",
-            value: breakdown?.competitorGap ?? 0,
-            max: 20
-          },
-          {
-            label: "AI citation gap",
-            value: breakdown?.aiCitationGap ?? 0,
             max: 20,
-            tone: "aeo"
+            showTenScale: true,
+            description:
+              "How often this topic is likely asked in AI systems."
           },
           {
-            label: "Conversion fit",
+            label: "Answer Likelihood",
+            value: breakdown?.trendingVelocity ?? 0,
+            max: 15,
+            showTenScale: true,
+            description:
+              "Chance AI returns a synthesized answer instead of links."
+          },
+          {
+            label: "Commercial / Solution Intent",
+            value: breakdown?.competitorGap ?? 0,
+            max: 20,
+            showTenScale: true,
+            description:
+              "How close this query is to solution evaluation and purchase."
+          },
+          {
+            label: "AI Citation Gap",
+            value: Math.min(15, breakdown?.aiCitationGap ?? 0),
+            max: 15,
+            tone: "aeo",
+            showTenScale: true,
+            description:
+              "How often competitors are cited while your brand is not."
+          },
+          {
+            label: "Authority Leverage",
             value: breakdown?.conversionFit ?? 0,
-            max: 15
+            max: 15,
+            showTenScale: true,
+            description:
+              "How much existing authority can support ranking/citation."
           },
           {
-            label: "Cannibalization clarity",
-            value: breakdown?.cannibalizationClarity ?? 0,
-            max: 10
+            label: "Content Coverage Gap",
+            // Legacy rows may still carry the old 0-10 range; scale
+            // them up to the new 0-15 so old + new rows render on the
+            // same axis.
+            value:
+              (breakdown?.cannibalizationClarity ?? 0) <= 10
+                ? Math.round(
+                    ((breakdown?.cannibalizationClarity ?? 0) / 10) * 15
+                  )
+                : Math.min(15, breakdown?.cannibalizationClarity ?? 0),
+            max: 15,
+            showTenScale: true,
+            description:
+              "How much useful structured content is missing today."
           }
         ]
       }}

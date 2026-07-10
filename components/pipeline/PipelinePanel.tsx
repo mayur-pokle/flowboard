@@ -31,6 +31,14 @@ export interface PanelScoreBar {
   value: number;
   max: number;
   tone?: "good" | "warn" | "aeo";
+  // Optional plain-English explanation of what the bar measures.
+  // Rendered as small caption under the bar (Discovery uses this).
+  description?: string;
+  // When true, also show a normalized /10 rating in parens next to
+  // the primary "value / max" (e.g. "14.0/20 (7.0/10)"). Discovery
+  // uses this so the strategist has a stable 10-point scale to eyeball
+  // regardless of the bar's actual max.
+  showTenScale?: boolean;
 }
 
 export interface PipelinePanelProps {
@@ -47,6 +55,15 @@ export interface PipelinePanelProps {
     value: number;
     label?: string; // "Score" | "Priority" | etc.
     priorityLabel?: string; // "P1" | "Medium" | etc.
+    // When set, replaces the small "PRIORITY <label>" line under the
+    // speedometer with a full tier label (e.g. "P2 Strong Priority").
+    // Discovery uses this; AI Resources sticks with the short form.
+    tierLabel?: string;
+    // Optional secondary line — e.g. "Backend score: 75.5" — shown as
+    // faint subtext beneath the tier label.
+    subtext?: string;
+    // "Step 2: Priority speedometer" style caption above the block.
+    headline?: string;
     bars: PanelScoreBar[];
   } | null;
 
@@ -160,13 +177,20 @@ export function PipelinePanel({
       {/* ── Score block ── */}
       {score ? (
         <div className="px-6 py-4 border-b border-ink-100">
-          <div className="grid grid-cols-2 gap-4 items-center">
+          {score.headline ? (
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-ink-500 mb-3">
+              {score.headline}
+            </div>
+          ) : null}
+          <div className="grid grid-cols-2 gap-4 items-start">
             <Speedometer
               value={score.value}
               label={score.label || "Score"}
               priorityLabel={score.priorityLabel}
+              tierLabel={score.tierLabel}
+              subtext={score.subtext}
             />
-            <div className="space-y-2.5">
+            <div className="space-y-3">
               {score.bars.map((b, i) => (
                 <ScoreBar key={i} {...b} />
               ))}
@@ -219,11 +243,15 @@ export function PipelinePanel({
 function Speedometer({
   value,
   label,
-  priorityLabel
+  priorityLabel,
+  tierLabel,
+  subtext
 }: {
   value: number;
   label: string;
   priorityLabel?: string;
+  tierLabel?: string;
+  subtext?: string;
 }) {
   // Semi-circle gauge. Needle angle: 180° at value=100, 0° at value=0.
   const angle = -90 + (Math.min(100, Math.max(0, value)) / 100) * 180;
@@ -292,14 +320,32 @@ function Speedometer({
         {value}
         <span className="text-base text-ink-400 font-normal"> / 100</span>
       </div>
-      <div className="text-[10px] uppercase tracking-wider text-ink-500 mt-1">
-        {priorityLabel ? `${label} ${priorityLabel}` : label}
-      </div>
+      {/* Tier label overrides the short priority label when provided
+          — Discovery shows the full "P2 Strong Priority" phrasing. */}
+      {tierLabel ? (
+        <div className="text-xs font-semibold text-emerald-600 mt-1">
+          {tierLabel}
+        </div>
+      ) : (
+        <div className="text-[10px] uppercase tracking-wider text-ink-500 mt-1">
+          {priorityLabel ? `${label} ${priorityLabel}` : label}
+        </div>
+      )}
+      {subtext ? (
+        <div className="text-[10px] text-ink-400 mt-0.5">{subtext}</div>
+      ) : null}
     </div>
   );
 }
 
-function ScoreBar({ label, value, max, tone }: PanelScoreBar) {
+function ScoreBar({
+  label,
+  value,
+  max,
+  tone,
+  description,
+  showTenScale
+}: PanelScoreBar) {
   const pct = max > 0 ? Math.min(100, (value / max) * 100) : 0;
   const barCls =
     tone === "aeo"
@@ -307,13 +353,23 @@ function ScoreBar({ label, value, max, tone }: PanelScoreBar) {
       : tone === "warn"
       ? "bg-amber-500"
       : "bg-emerald-500";
+  // Normalized /10 rating rendered in parens next to the raw value.
+  const tenScale =
+    showTenScale && max > 0
+      ? ((value / max) * 10).toFixed(1)
+      : null;
   return (
     <div>
-      <div className="flex items-baseline justify-between mb-1">
-        <span className="text-[11px] text-ink-600">{label}</span>
-        <span className="text-[11px] font-semibold text-ink-900 tabular-nums">
-          {value}
+      <div className="flex items-baseline justify-between mb-1 gap-2">
+        <span className="text-[11px] text-ink-600 truncate">{label}</span>
+        <span className="text-[11px] font-semibold text-ink-900 tabular-nums shrink-0">
+          {value.toFixed(value % 1 === 0 ? 0 : 1)}
           <span className="text-ink-400 font-normal"> / {max}</span>
+          {tenScale ? (
+            <span className="text-ink-400 font-normal ml-1">
+              ({tenScale}/10)
+            </span>
+          ) : null}
         </span>
       </div>
       <div className="h-1.5 bg-ink-100 rounded-full overflow-hidden">
@@ -322,6 +378,11 @@ function ScoreBar({ label, value, max, tone }: PanelScoreBar) {
           style={{ width: `${pct}%` }}
         />
       </div>
+      {description ? (
+        <div className="text-[10px] text-ink-500 leading-snug mt-1">
+          {description}
+        </div>
+      ) : null}
     </div>
   );
 }

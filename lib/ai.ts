@@ -108,10 +108,29 @@ function providerOrder(
 // Topic generation
 // ============================================================
 
-const TOPIC_SYSTEM_PROMPT = `You are an expert SEO and content strategist.
-You identify high-leverage content opportunities (free tools, calculators, templates, guides, whitepapers, checklists, frameworks) that drive organic traffic and qualified leads.
+// Import the playbook helpers.
+import {
+  playbookQuotas as _playbookQuotas,
+  renderPlaybookMenuForPrompt as _renderPlaybookMenu,
+  renderPlaybookContentRules as _renderPlaybookContentRules,
+  detectPlaybook as _detectPlaybook,
+  PLAYBOOKS as _PLAYBOOKS,
+  type PlaybookId as _PlaybookId
+} from "@/lib/growth-playbooks";
 
-Return strict JSON only — no prose, no markdown fences. Schema:
+// Legacy static prompt kept as a reference — no longer used. The
+// active prompt is built per-call by buildTopicSystemPrompt() below so
+// the playbook menu can reflect the requested count's quotas.
+const TOPIC_SYSTEM_PROMPT_LEGACY = "";
+void TOPIC_SYSTEM_PROMPT_LEGACY;
+
+function buildTopicSystemPrompt(count: number, retryDeficit?: string): string {
+  return `You are a senior growth-team strategist covering AEO/GEO, traditional SEO, engineering-as-marketing, competitor content, lead magnets, and community-driven content. You produce a DIVERSE portfolio of opportunities — pillar articles, direct-answer citation pieces, comparison pages, calculators/tools, downloadable lead magnets, refreshes, and community-answer pieces. The mix is the point.
+
+${_renderPlaybookMenu(count)}
+
+# OUTPUT SCHEMA — strict JSON, no prose, no fences
+
 {
   "topics": [
     {
@@ -128,26 +147,56 @@ Return strict JSON only — no prose, no markdown fences. Schema:
       "estimatedEffort": "Low" | "Medium" | "High",
       "competitorGap": string,
       "rankingPotential": string,
-      "businessImpact": string
+      "businessImpact": string,
+      "playbook": "pillar-guide" | "aeo-answer" | "comparison-vs" | "programmatic-seo" | "free-tool" | "lead-magnet" | "refresh" | "community-answer"
     }
   ]
 }
 
-Rules:
-- Generate exactly N topics (caller specifies).
-- Mix content types — at least 2 calculators/tools and 2 templates if N >= 6.
-- Target keywords must be specific long-tail (3-6 words).
-- priorityScore is 0-100 and must be consistent with priority ("High" -> 70-100).
-- impactScore is 0-100 reflecting demand × brand fit × competitor white-space × novelty.
-- intent must be one of: informational, commercial, transactional, navigational.
-- whyOpportunity must reference search demand, competitor weakness, or business impact in 1-2 sentences.
+# RULES
 
-CANNIBALIZATION RULES (CRITICAL — violating any of these is a failure):
-1. NEVER propose a topic whose primary keyword overlaps with the "Existing content" list (treat the list as already published — proposing it again would cannibalize SEO).
+1. **Playbook diversity is mandatory.** Every topic MUST include a \`playbook\` field. Hit each playbook's minimum count from the menu.
+2. **Playbook shape drives contentType.** Rough mapping:
+   - free-tool → \`Calculator\`
+   - lead-magnet → \`Template\` or \`Checklist\`
+   - programmatic-seo → \`Template\` or \`Framework\`
+   - comparison-vs → \`Guide\`
+   - aeo-answer / pillar-guide / community-answer → \`Guide\` (or \`Whitepaper\` if long)
+   - refresh → whatever matches the existing page's contentType (say \`Guide\` if unknown)
+3. **Target keyword** must be 2-6 words, long-tail, distinct from the title.
+4. **priorityScore** is 0-100 and matches priority ("High" → 70-100).
+5. **impactScore** is 0-100 reflecting demand × brand fit × white-space × novelty.
+6. **whyOpportunity** must reference a specific competitor gap OR the brand's positioning advantage — 1-2 sentences.
+7. **estimatedEffort** should scale with the playbook (free-tool = Medium/High; lead-magnet = Low; aeo-answer = Medium; pillar-guide = High).
+
+# CANNIBALIZATION RULES (violating any is a failure)
+
+1. NEVER propose a topic whose primary keyword overlaps with the "Existing content" list. If overlap is real and the existing page is stale, propose a REFRESH (playbook: refresh) instead.
 2. NEVER propose two topics in this batch with the same primary keyword OR the same search intent on the same head term.
-3. If a topic is a long-tail expansion of an existing page, it must clearly differ on intent (e.g. informational vs commercial) AND target a distinct long-tail variant.
-4. P0 keywords listed by the user MUST each be addressed by at least one topic in the batch IF there isn't already a "Existing content" page targeting them.
-5. Avoid any title or keyword that is a near-duplicate of items in "Recent titles" or "Existing content".`;
+3. If a topic is a long-tail expansion of an existing page, it must clearly differ on intent AND target a distinct long-tail variant.
+4. P0 keywords listed by the user MUST each be addressed by at least one topic (unless already covered by existing content).
+5. Avoid titles that are near-duplicates of "Recent titles" or "Existing content".
+
+# BANNED PHRASINGS
+
+- "Complete guide to X"
+- "Ultimate guide to X"
+- "Everything you need to know about X"
+- Any generic explainer that doesn't tie to a specific gap or signal
+
+# QUOTA CHECK
+
+Before emitting, verify:
+- Each playbook has at least its minimum item count.
+- No two items share a playbook + keyword.
+- Every item's shape matches its declared playbook (calculators are tools, checklists are lead magnets, comparisons have "vs" or "alternative" in them, etc.).
+
+${
+  retryDeficit
+    ? `\n**⚠️ RETRY: prior attempt was short on: ${retryDeficit}. Fix the mix — replace the weakest items, don't just append.**\n`
+    : ""
+}`;
+}
 
 function formatCompetitors(
   competitors: BrandContext["competitors"]
@@ -529,7 +578,7 @@ async function generateTopicsOpenAI(
     response_format: { type: "json_object" },
     temperature: 0.8,
     messages: [
-      { role: "system", content: TOPIC_SYSTEM_PROMPT },
+      { role: "system", content: buildTopicSystemPrompt(count) },
       { role: "user", content: buildTopicUserPrompt(ctx, count) }
     ]
   });
@@ -549,7 +598,7 @@ async function generateTopicsGemini(
     model: modelName,
     generationConfig: { responseMimeType: "application/json", temperature: 0.8 }
   });
-  const prompt = `${TOPIC_SYSTEM_PROMPT}\n\n${buildTopicUserPrompt(ctx, count)}`;
+  const prompt = `${buildTopicSystemPrompt(count)}\n\n${buildTopicUserPrompt(ctx, count)}`;
   const result = await model.generateContent(prompt);
   const text = result.response.text();
   const parsed = JSON.parse(text);
@@ -569,7 +618,7 @@ async function generateTopicsAnthropic(
     model: modelName,
     max_tokens: 4096,
     temperature: 0.8,
-    system: TOPIC_SYSTEM_PROMPT,
+    system: buildTopicSystemPrompt(count),
     messages: [
       {
         role: "user",
@@ -641,6 +690,25 @@ function normalizeTopics(raw: unknown[]): Topic[] {
     const intent = intents.includes(obj.intent as SearchIntentType)
       ? (obj.intent as SearchIntentType)
       : inferIntent(String(obj.searchIntent || ""));
+    // Playbook — accept if declared and valid, otherwise leave
+    // undefined (detectPlaybook fills in at brief-gen time).
+    const declaredPlaybook =
+      typeof obj.playbook === "string" ? (obj.playbook as string) : "";
+    const validPlaybooks: Topic["playbook"][] = [
+      "pillar-guide",
+      "aeo-answer",
+      "comparison-vs",
+      "programmatic-seo",
+      "free-tool",
+      "lead-magnet",
+      "refresh",
+      "community-answer"
+    ];
+    const playbook = validPlaybooks.includes(
+      declaredPlaybook as Topic["playbook"]
+    )
+      ? (declaredPlaybook as Topic["playbook"])
+      : undefined;
     out.push({
       id: uid("topic"),
       title,
@@ -657,6 +725,7 @@ function normalizeTopics(raw: unknown[]): Topic[] {
       competitorGap: obj.competitorGap ? String(obj.competitorGap) : undefined,
       rankingPotential: obj.rankingPotential ? String(obj.rankingPotential) : undefined,
       businessImpact: obj.businessImpact ? String(obj.businessImpact) : undefined,
+      playbook,
       createdAt: new Date().toISOString()
     });
   }
@@ -1063,6 +1132,27 @@ Rules:
 
 function buildContentUserPrompt(topic: Topic, ctx: BrandContext) {
   const lines: string[] = [];
+
+  // Resolve playbook — declared > inferred. When set, playbook rules
+  // override the generic content system prompt for shape choices
+  // (comparison table required for comparison-vs, landing-page copy
+  // for free-tool, gate page for lead-magnet, etc.).
+  const resolvedPlaybook: _PlaybookId = topic.playbook
+    ? topic.playbook
+    : _detectPlaybook({
+        title: topic.title,
+        targetKeyword: topic.targetKeyword,
+        intent: topic.intent,
+        contentType: topic.contentType,
+        hasCannibalizingPage: Boolean(topic.overlapWithUrl),
+        aiCitationGap: false
+      });
+  const playbookRules = _renderPlaybookContentRules(resolvedPlaybook);
+  const playbookDef = _PLAYBOOKS[resolvedPlaybook];
+  lines.push(`# Playbook: ${playbookDef.label}`);
+  lines.push(playbookRules);
+  lines.push("");
+
   lines.push("# Brand profile");
   if (ctx.companyName) lines.push(`Company: ${ctx.companyName}`);
   if (ctx.websiteUrl) lines.push(`Website: ${ctx.websiteUrl}`);

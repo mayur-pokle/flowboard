@@ -13,8 +13,17 @@ import type {
   OpportunityType
 } from "@/lib/opportunity-classifier";
 import { intentExplanation } from "@/lib/opportunity-classifier";
+import {
+  PLAYBOOKS,
+  detectPlaybook,
+  renderPlaybookBriefAddon,
+  type PlaybookId
+} from "@/lib/growth-playbooks";
 
 export interface BriefData {
+  // ── Playbook (source-of-truth for the shape) ──
+  playbook?: PlaybookId;
+  playbookLabel?: string;
   // ── Intent ──
   intent: Intent;
   intentExplanation: string;
@@ -249,9 +258,27 @@ export interface BriefInput {
   aiCitationsCited: string[];
   cannibalizingPages: Array<{ url: string; title: string }>;
   brandPrimaryCta?: string;
+  // Growth playbook — drives structure + word count + brief addon.
+  // When omitted the brief generator infers it via detectPlaybook().
+  playbook?: PlaybookId;
 }
 
 export function buildBriefData(input: BriefInput): BriefData {
+  // Resolve the playbook — declared > inferred. Every downstream
+  // decision (word count, H2 shape, brief addon, content prompt)
+  // routes through this.
+  const playbook: PlaybookId =
+    input.playbook ??
+    detectPlaybook({
+      title: input.articleTitle || input.query,
+      targetKeyword: input.query,
+      intent: input.intent,
+      hasCannibalizingPage: input.cannibalizingPages.length > 0,
+      aiCitationGap: input.aiCitationGap,
+      isRefresh: input.opportunityType === "refresh"
+    });
+  const playbookDef = PLAYBOOKS[playbook];
+
   const fmt = formatFor(input.intent, input.competitorGapScore);
   const h2s = h2StructureFor({
     query: input.query,
@@ -272,12 +299,21 @@ export function buildBriefData(input: BriefInput): BriefData {
   }));
 
   const data: BriefData = {
+    playbook,
+    playbookLabel: playbookDef.label,
     intent: input.intent,
     intentExplanation: intentExplanation(input.intent),
-    recommendedFormat: fmt.format,
-    wordCountMin: fmt.wordCountMin,
-    wordCountMax: fmt.wordCountMax,
-    h2Structure: h2s,
+    // Playbook takes precedence for format + word count; falls back
+    // to the intent-driven format if the playbook is a legacy value.
+    recommendedFormat: playbookDef.label.toLowerCase(),
+    wordCountMin: playbookDef.wordCountMin || fmt.wordCountMin,
+    wordCountMax: playbookDef.wordCountMax || fmt.wordCountMax,
+    // Prefer playbook-declared structure rules when the playbook has
+    // a full skeleton; otherwise fall back to intent-inferred H2s.
+    h2Structure:
+      playbookDef.structureRules && playbookDef.structureRules.length > 0
+        ? playbookDef.structureRules
+        : h2s,
     topCompetitors,
     competitorGaps: gaps,
     ctaRecommendation: ctaFor(input.intent, input.brandPrimaryCta),
@@ -325,12 +361,23 @@ export function renderBriefAsMarkdown(
   const lines: string[] = [];
   lines.push(`# Brief: ${displayTitle}`);
   lines.push("");
+  const playbookTag = brief.playbookLabel
+    ? `**Playbook:** ${brief.playbookLabel} · `
+    : "";
   lines.push(
-    `> **${brief.recommendedFormat}** · intent: **${brief.intent}** · ` +
+    `> ${playbookTag}intent: **${brief.intent}** · ` +
       `target ${brief.wordCountMin.toLocaleString()}–${brief.wordCountMax.toLocaleString()} words · ` +
       `priority **${brief.priority}** · score **${brief.totalScore}/100**`
   );
   lines.push("");
+  // Playbook-specific rationale + framework — tells the writer WHY
+  // this article is shaped this way (comparison table, tool spec, TL;DR
+  // block, etc.). Comes straight from lib/growth-playbooks.ts.
+  if (brief.playbook) {
+    lines.push("## Playbook");
+    lines.push(renderPlaybookBriefAddon(brief.playbook));
+    lines.push("");
+  }
 
   lines.push("## Intent");
   lines.push(brief.intentExplanation);

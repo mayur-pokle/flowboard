@@ -107,6 +107,15 @@ export const POST = withAuth(
           ? (metricsBag.targetKeyword as string).trim()
           : opp.query;
 
+      // Playbook — the identifier stashes it in metrics.playbook when
+      // the row came from Gemini gap identification. Fallback to
+      // brief-generator's detectPlaybook() when absent.
+      const declaredPlaybook =
+        typeof metricsBag.playbook === "string" &&
+        metricsBag.playbook.trim().length > 0
+          ? (metricsBag.playbook as string).trim()
+          : undefined;
+
       const briefData: BriefData = buildBriefData({
         query: targetKeyword,
         articleTitle: opp.query,
@@ -120,7 +129,10 @@ export const POST = withAuth(
         competitorGapScore: opp.competitorGapScore ?? 0,
         aiCitationsCited: (opp.aiCitationsCited as string[] | null) ?? [],
         cannibalizingPages: cannibalization,
-        brandPrimaryCta: brand?.primaryCta || undefined
+        brandPrimaryCta: brand?.primaryCta || undefined,
+        playbook: declaredPlaybook as Parameters<
+          typeof buildBriefData
+        >[0]["playbook"]
       });
       const briefMarkdown = renderBriefAsMarkdown(briefData, opp.query);
       const now = new Date();

@@ -38,6 +38,20 @@ export interface Topic {
   noveltyScore?: number; // 0-100 (100 = totally fresh)
   overlapWithUrl?: string;
   overlapWithTitle?: string;
+  // ── Growth playbook attribution ──
+  // Which playbook produced this idea. Drives brief + content
+  // generation downstream. Optional so legacy topics without an
+  // explicit tag still hydrate; the brief generator falls back to
+  // detectPlaybook() when missing.
+  playbook?:
+    | "pillar-guide"
+    | "aeo-answer"
+    | "comparison-vs"
+    | "programmatic-seo"
+    | "free-tool"
+    | "lead-magnet"
+    | "refresh"
+    | "community-answer";
   createdAt: string;
 }
 

@@ -157,7 +157,10 @@ export const POST = withAuth(async (_user, req) => {
         url: null,
         metrics: {
           targetKeyword: gap.targetKeyword,
-          competitorCount: cleanCompetitorUrls.length
+          competitorCount: cleanCompetitorUrls.length,
+          // Persist the playbook so brief + content gen can dispatch
+          // to the right shape without re-inferring.
+          playbook: gap.playbook || null
         },
         score: classified.totalScore,
         status: "new",

@@ -22,6 +22,11 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import Anthropic from "@anthropic-ai/sdk";
 import type { BriefData } from "@/lib/brief-generator";
 import type { OpportunityType } from "@/lib/opportunity-classifier";
+import {
+  renderPlaybookContentRules,
+  detectPlaybook,
+  type PlaybookId
+} from "@/lib/growth-playbooks";
 
 export type ProviderName = "openai" | "anthropic" | "gemini" | "mock";
 
@@ -177,7 +182,31 @@ function buildPrompt(inputs: ContentGenInputs): string {
     header = `## STRATEGIST INSTRUCTIONS (highest priority)\n${perTypeInstructions}\n\n`;
   }
 
-  return `${header}${lines.join("\n")}\n\n## ARTICLE GENERATION RULES\n${FIXED_INSTRUCTIONS}`;
+  // Playbook-specific content rules — injected between the strategist
+  // instructions and the fixed article-generation rules. When present,
+  // these OVERRIDE the generic FIXED_INSTRUCTIONS for shape choices
+  // (comparison-vs must include a table, free-tool is a landing page,
+  // lead-magnet is a gate page, etc.). We resolve the playbook via
+  // brief.playbook, falling back to detectPlaybook if the brief is
+  // legacy.
+  const resolvedPlaybook: PlaybookId =
+    brief.playbook ??
+    detectPlaybook({
+      title: inputs.articleTitle || query,
+      targetKeyword: query,
+      intent: brief.intent,
+      hasCannibalizingPage:
+        Boolean(brief.cannibalization?.overlappingPages.length),
+      aiCitationGap: Boolean(brief.aiCitationAngle),
+      isRefresh: brief.opportunityType === "refresh"
+    });
+  const playbookRules = renderPlaybookContentRules(resolvedPlaybook);
+
+  return (
+    `${header}${lines.join("\n")}\n\n` +
+    (playbookRules ? `${playbookRules}\n\n` : "") +
+    `## GENERAL ARTICLE RULES (apply when the playbook rules don't override)\n${FIXED_INSTRUCTIONS}`
+  );
 }
 
 // ── Provider callouts ──

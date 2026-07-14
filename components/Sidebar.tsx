@@ -7,16 +7,21 @@ import {
   Layers,
   Settings,
   LogOut,
-  Telescope
+  Telescope,
+  Microscope
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useStore, useHasHydrated } from "@/lib/store";
 
 // AI Resources holds the full content production funnel — generation
 // in the Ideas column, then triage / production / done. AI Discovery
-// is the demand-capture surface; they share the same kanban chassis.
+// is the demand-capture surface. Topic Analyzer is the intake-triage
+// workbench where the strategist analyses individual candidates
+// before pushing to either of the other surfaces. All three share the
+// same kanban chassis.
 const items = [
   { href: "/discovery", label: "AI Discovery", icon: Telescope },
+  { href: "/analyzer", label: "Topic Analyzer", icon: Microscope },
   { href: "/board", label: "AI Resources", icon: Layers },
   { href: "/settings/api", label: "Settings", icon: Settings }
 ];

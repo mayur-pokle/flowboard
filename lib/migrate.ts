@@ -173,6 +173,21 @@ const STATEMENTS: string[] = [
   `ALTER TABLE "discoveredOpportunities" ADD COLUMN IF NOT EXISTS "contentGeneratedAt" timestamp`,
   `ALTER TABLE "discoveredOpportunities" ADD COLUMN IF NOT EXISTS "qualitySignals" jsonb`,
   `ALTER TABLE "discoveredOpportunities" ADD COLUMN IF NOT EXISTS "linkedTaskId" text`,
+  // ── Topic Analyzer ──
+  `CREATE TABLE IF NOT EXISTS "analyzedTopics" (
+    "id" text PRIMARY KEY,
+    "title" text NOT NULL,
+    "targetKeyword" text,
+    "notes" text,
+    "kanbanColumn" text NOT NULL DEFAULT 'draft',
+    "analysis" jsonb,
+    "enrichment" jsonb,
+    "promotedToTaskId" text,
+    "promotedToDiscoveryId" text,
+    "createdAt" timestamp DEFAULT now() NOT NULL,
+    "updatedAt" timestamp DEFAULT now() NOT NULL,
+    "createdByUserId" text
+  )`,
   // ── Demand-capture pipeline columns ──
   `ALTER TABLE "discoveredOpportunities" ADD COLUMN IF NOT EXISTS "kanbanColumn" text NOT NULL DEFAULT 'intake'`,
   `ALTER TABLE "discoveredOpportunities" ADD COLUMN IF NOT EXISTS "opportunityType" text NOT NULL DEFAULT 'new'`,

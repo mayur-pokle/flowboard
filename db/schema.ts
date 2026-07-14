@@ -388,6 +388,48 @@ export const discoveredOpportunities = pgTable("discoveredOpportunities", {
   updatedAt: timestamp("updatedAt", { mode: "date" }).defaultNow().notNull()
 });
 
+// ───────────────────── Topic Analyzer ─────────────────────
+// A workbench where the strategist submits ONE candidate topic at a
+// time and gets a full analysis (cannibalization risk, playbook,
+// score breakdown, deterministic brief). Analyzed topics live in
+// their own table so they don't pollute the Discovery / Resources
+// pipelines until the strategist explicitly promotes them.
+//
+// Kanban columns: draft → analyzed → approved → archived.
+export const analyzedTopics = pgTable("analyzedTopics", {
+  id: text("id").primaryKey(),
+  // Submitted title / topic candidate — free-text from the strategist.
+  title: text("title").notNull(),
+  // Optional target keyword the strategist wants to hit. When absent
+  // the analyzer derives a 2-4 word keyword from the title.
+  targetKeyword: text("targetKeyword"),
+  // Optional free-text notes from the strategist explaining the angle
+  // or why they're considering the topic.
+  notes: text("notes"),
+  // Column on the analyzer Kanban.
+  //   "draft"     → submitted, analysis pending / in-flight
+  //   "analyzed"  → analysis returned, awaiting strategist decision
+  //   "approved"  → strategist has locked it in (may be promoted)
+  //   "archived"  → dismissed / shipped
+  kanbanColumn: text("kanbanColumn").default("draft").notNull(),
+  // Full analysis payload — cannibalization matches, playbook, score
+  // breakdown, brief data, alternate headlines, recommendation, etc.
+  // Shape defined in lib/topic-analyzer.ts.
+  analysis: jsonb("analysis"),
+  // Optional Gemini enrichment payload — added on demand via the
+  // "Enrich" action. Shape defined in lib/topic-enricher.ts.
+  enrichment: jsonb("enrichment"),
+  // If the strategist promoted this to another surface, we record
+  // the destination so the card can deep-link back.
+  promotedToTaskId: text("promotedToTaskId"),
+  promotedToDiscoveryId: text("promotedToDiscoveryId"),
+  createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt", { mode: "date" }).defaultNow().notNull(),
+  createdByUserId: text("createdByUserId")
+});
+
+export type DbAnalyzedTopic = typeof analyzedTopics.$inferSelect;
+
 // Flag to know if the workspace has ever been seeded from a browser
 // snapshot, so we don't re-migrate on every sign-in.
 export const meta = pgTable("meta", {

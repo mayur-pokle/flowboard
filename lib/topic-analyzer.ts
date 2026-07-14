@@ -1,0 +1,494 @@
+// ── Topic Analyzer ────────────────────────────────────────────────────
+//
+// Given a candidate topic the strategist submits by hand, produce a
+// full deterministic analysis:
+//   • Detected intent + playbook (via classifiers)
+//   • 6-pillar score breakdown + total + priority tier
+//   • Cannibalization matches from the Content Library
+//   • Deterministic brief (playbook-shaped)
+//   • Alternate headline suggestions
+//   • Competitor coverage summary
+//   • AEO citation angle (when the shape fits)
+//   • Recommendation ("proceed" / "refine" / "reconsider")
+//
+// No LLM call — the pipeline runs in <1s. The optional AI enrichment
+// step lives in lib/topic-enricher.ts and is triggered separately.
+
+import {
+  classifyOpportunity,
+  derivePriorityTier,
+  type Intent,
+  type OpportunityType,
+  type PriorityTier,
+  type ScoreBreakdown
+} from "@/lib/opportunity-classifier";
+import {
+  detectPlaybook,
+  PLAYBOOKS,
+  type PlaybookId
+} from "@/lib/growth-playbooks";
+import {
+  buildBriefData,
+  findCannibalizationMatches,
+  renderBriefAsMarkdown,
+  type BriefData
+} from "@/lib/brief-generator";
+
+// ── Input + Output types ─────────────────────────────────────────────
+
+export interface AnalyzeInput {
+  title: string;
+  targetKeyword?: string;
+  notes?: string;
+  // Workspace context — the strategist doesn't retype this, we pull
+  // from settings at the call site.
+  brand: {
+    companyName?: string;
+    brandNiche?: string;
+    brandAudience?: string;
+    brandVoice?: string;
+    valueProposition?: string;
+    productDescription?: string;
+    primaryCta?: string;
+  };
+  competitors: Array<{ name: string; url: string; tier?: string }>;
+  contentLibrary: Array<{
+    url: string;
+    title: string;
+    targetKeyword?: string;
+  }>;
+}
+
+export type Recommendation = "proceed" | "refine" | "reconsider";
+
+export interface CannibalizationMatch {
+  url: string;
+  title: string;
+  severity: "high" | "medium" | "low";
+  reason: string;
+}
+
+export interface AnalysisResult {
+  // ── Basic identity ──
+  title: string;
+  targetKeyword: string;
+  articleTitle: string;
+
+  // ── Classification ──
+  intent: Intent;
+  opportunityType: OpportunityType;
+  playbook: PlaybookId;
+  playbookLabel: string;
+  aiCitationGap: boolean;
+
+  // ── Score ──
+  score: number;
+  scoreBreakdown: ScoreBreakdown;
+  priorityTier: PriorityTier;
+
+  // ── Cannibalization ──
+  cannibalization: {
+    matches: CannibalizationMatch[];
+    verdict: "clear" | "review" | "block";
+    reason: string;
+  };
+
+  // ── Competitor coverage ──
+  competitorCoverage: {
+    likelyCoveredBy: Array<{ name: string; url: string }>;
+    ownershipAngle: string;
+  };
+
+  // ── Brief ──
+  brief: BriefData;
+  briefMarkdown: string;
+
+  // ── AEO angle ──
+  aeoAngle?: {
+    citationWorthy: boolean;
+    structuralAdvice: string[];
+    exampleOpeningParagraph: string;
+  };
+
+  // ── Alternate headlines ──
+  alternateHeadlines: string[];
+
+  // ── Recommendation ──
+  recommendation: {
+    verdict: Recommendation;
+    summary: string;
+    nextSteps: string[];
+  };
+
+  // Bookkeeping
+  generatedAt: string;
+}
+
+// ── Utility: derive a target keyword from a headline ─────────────────
+// The strategist may submit a natural-language headline instead of a
+// keyword phrase. We extract a 2-5 word keyword by stripping fillers.
+
+const STOPWORDS = new Set([
+  "the", "a", "an", "and", "or", "of", "in", "on", "to", "for", "with",
+  "by", "from", "at", "your", "our", "how", "what", "why", "when",
+  "which", "who", "is", "are", "be", "this", "that", "these", "those",
+  "into", "about", "after", "before", "than", "then", "so", "as",
+  "using", "use", "using", "vs", "vs."
+]);
+
+function deriveKeywordFromTitle(title: string): string {
+  const words = title
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+  const kept = words.filter((w) => !STOPWORDS.has(w) && w.length > 1);
+  // Take the first 4 substantive tokens as the derived keyword.
+  return kept.slice(0, 4).join(" ") || title.toLowerCase().slice(0, 40);
+}
+
+// ── Cannibalization scoring ──────────────────────────────────────────
+// findCannibalizationMatches gives us title/URL overlap. We add a
+// severity + reason on top so the UI can render a proper warning.
+
+function scoreCannibalization(
+  matches: Array<{ url: string; title: string; targetKeyword?: string }>,
+  submittedTitle: string,
+  submittedKeyword: string
+): {
+  matches: CannibalizationMatch[];
+  verdict: "clear" | "review" | "block";
+  reason: string;
+} {
+  if (matches.length === 0) {
+    return {
+      matches: [],
+      verdict: "clear",
+      reason: "No library titles overlap with this topic."
+    };
+  }
+  const scored: CannibalizationMatch[] = matches.slice(0, 5).map((m) => {
+    const t = m.title.toLowerCase();
+    const kw = (m.targetKeyword || "").toLowerCase();
+    const submittedT = submittedTitle.toLowerCase();
+    const submittedKw = submittedKeyword.toLowerCase();
+    // Exact keyword match → high severity.
+    if (kw && (kw === submittedKw || kw === submittedT)) {
+      return {
+        url: m.url,
+        title: m.title,
+        severity: "high",
+        reason: "Existing page targets the same keyword — publishing new would cannibalize."
+      };
+    }
+    // Title very close → medium.
+    const tokenOverlap = submittedT
+      .split(/\s+/)
+      .filter((tok) => tok.length >= 4 && t.includes(tok)).length;
+    if (tokenOverlap >= 3) {
+      return {
+        url: m.url,
+        title: m.title,
+        severity: "medium",
+        reason: `Title shares ${tokenOverlap} substantive tokens with an existing page. Differentiate scope.`
+      };
+    }
+    return {
+      url: m.url,
+      title: m.title,
+      severity: "low",
+      reason: "Related but distinct — worth a quick manual scan."
+    };
+  });
+  const worst = scored.reduce<CannibalizationMatch["severity"]>(
+    (acc, c) =>
+      c.severity === "high"
+        ? "high"
+        : c.severity === "medium" && acc !== "high"
+        ? "medium"
+        : acc,
+    "low"
+  );
+  const verdict =
+    worst === "high" ? "block" : worst === "medium" ? "review" : "clear";
+  const reason =
+    verdict === "block"
+      ? "At least one existing page targets the same keyword. Refresh the existing page instead of publishing new."
+      : verdict === "review"
+      ? "Meaningful overlap with published content. Differentiate the angle before proceeding."
+      : "Only weak overlaps — no cannibalization risk.";
+  return { matches: scored, verdict, reason };
+}
+
+// ── Competitor coverage inference ────────────────────────────────────
+
+function inferCompetitorCoverage(
+  competitors: AnalyzeInput["competitors"],
+  submittedTitle: string
+): {
+  likelyCoveredBy: Array<{ name: string; url: string }>;
+  ownershipAngle: string;
+} {
+  const primary = competitors.filter((c) => c.tier === "primary");
+  const relevant = (primary.length > 0 ? primary : competitors).slice(0, 5);
+  return {
+    likelyCoveredBy: relevant.map((c) => ({ name: c.name, url: c.url })),
+    ownershipAngle:
+      relevant.length > 0
+        ? `${relevant.length} tracked competitor${relevant.length === 1 ? "" : "s"} likely cover this space. Differentiate on a specific angle (${
+            submittedTitle.length > 60 ? "you already have one" : "sharper vertical / stage / worked example"
+          }) to earn share.`
+        : "No competitors configured — the space is either uncontested or under-mapped. Add competitors in Settings for a stronger read."
+  };
+}
+
+// ── AEO angle ────────────────────────────────────────────────────────
+
+function buildAeoAngle(
+  title: string,
+  intent: Intent,
+  playbook: PlaybookId,
+  aiCitationGap: boolean,
+  brandNiche?: string
+): AnalysisResult["aeoAngle"] | undefined {
+  if (!aiCitationGap && playbook !== "aeo-answer" && playbook !== "community-answer") {
+    return undefined;
+  }
+  const t = title.toLowerCase();
+  const questionShaped = /^(what|how|why|when|where|which|who|is|are)/.test(t);
+  return {
+    citationWorthy: questionShaped || playbook === "aeo-answer",
+    structuralAdvice: [
+      "Lead paragraph 1 with a 40-80-word direct answer that contains the exact keyword.",
+      "Add a `> **TL;DR:**` blockquote right under paragraph 1.",
+      "Frame each H2 as a follow-up question a reader would ask an AI engine.",
+      "Include ≥5 quantified claims (numbers, dates, percentages) to be citation-quotable.",
+      "End with a `## Frequently asked questions` section with 3-5 concise Q&A pairs."
+    ],
+    exampleOpeningParagraph: `${title} — a ${intent} question at the heart of what ${
+      brandNiche || "this space"
+    } practitioners face today. The short answer: [DIRECT ANSWER IN ONE SENTENCE]. This piece walks through the reasoning + the numbers that back it up.`
+  };
+}
+
+// ── Alternate headlines ──────────────────────────────────────────────
+// Deterministic variants shaped by the playbook. Not AI — pattern-based
+// so the strategist gets 3 options to pick from without a Gemini call.
+
+function generateAlternateHeadlines(
+  title: string,
+  keyword: string,
+  playbook: PlaybookId,
+  year = 2026
+): string[] {
+  const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+  const kwCap = cap(keyword);
+  const suggestions = new Set<string>();
+  suggestions.add(title);
+
+  switch (playbook) {
+    case "pillar-guide":
+      suggestions.add(`${kwCap}: the operator's playbook for ${year}`);
+      suggestions.add(`${kwCap} — a working framework, with benchmarks`);
+      suggestions.add(`What ${kwCap} looks like when it's done right`);
+      break;
+    case "aeo-answer":
+      suggestions.add(`What is ${keyword}? The ${year} answer with worked numbers`);
+      suggestions.add(`How ${keyword} actually works — a step-by-step explainer`);
+      suggestions.add(`${kwCap} in ${year}: benchmarks + the direct answer`);
+      break;
+    case "comparison-vs":
+      suggestions.add(`${kwCap}: a ${year} head-to-head`);
+      suggestions.add(`The best ${keyword} options compared (with switching cost)`);
+      suggestions.add(`Alternatives to ${keyword}: when each one wins`);
+      break;
+    case "free-tool":
+      suggestions.add(`${kwCap} calculator — input your data, get the answer`);
+      suggestions.add(`Free ${keyword} tool: paste it in, get a report`);
+      break;
+    case "lead-magnet":
+      suggestions.add(`The ${year} ${keyword} template (free Notion)`);
+      suggestions.add(`The ${keyword} checklist we use — download it`);
+      break;
+    case "refresh":
+      suggestions.add(`Refresh: bring the existing ${keyword} page up to ${year} AEO standard`);
+      suggestions.add(`Refresh: ${kwCap} — kill stale claims, add current benchmarks`);
+      break;
+    case "programmatic-seo":
+      suggestions.add(`${kwCap} by industry — template that spawns 10 pages`);
+      suggestions.add(`${kwCap} for [industry]: variable-driven template`);
+      break;
+    case "community-answer":
+      suggestions.add(`How founders actually handle ${keyword}`);
+      suggestions.add(`The r/startups question about ${keyword} — a practitioner answer`);
+      break;
+  }
+  return Array.from(suggestions).slice(0, 4);
+}
+
+// ── Recommendation ───────────────────────────────────────────────────
+
+function buildRecommendation(
+  score: number,
+  cannibalizationVerdict: "clear" | "review" | "block",
+  aiCitationGap: boolean
+): AnalysisResult["recommendation"] {
+  if (cannibalizationVerdict === "block") {
+    return {
+      verdict: "reconsider",
+      summary:
+        "Cannibalization risk is high. Refresh the existing page instead of publishing a new one.",
+      nextSteps: [
+        "Refresh the flagged existing page — bring it up to today's AEO / structural standard.",
+        "If you must publish new, pivot the angle to a clearly distinct sub-topic + retarget the keyword."
+      ]
+    };
+  }
+  if (score >= 70 && cannibalizationVerdict !== "review") {
+    return {
+      verdict: "proceed",
+      summary: `Score ${score.toFixed(1)} / 100 — strong opportunity. ${
+        aiCitationGap
+          ? "AI-citation shape looks strong; write to the AEO angle."
+          : "Standard SEO shape; write to the playbook."
+      }`,
+      nextSteps: [
+        "Move to Analyzed, review the brief.",
+        "Optionally enrich with Gemini for competitor + headline research.",
+        "Approve and promote to AI Resources when ready to commission."
+      ]
+    };
+  }
+  if (score >= 50 || cannibalizationVerdict === "review") {
+    return {
+      verdict: "refine",
+      summary:
+        cannibalizationVerdict === "review"
+          ? "Meaningful cannibalization signal — differentiate the angle before proceeding."
+          : `Score ${score.toFixed(1)} / 100 — moderate. Sharpen the angle before committing.`,
+      nextSteps: [
+        cannibalizationVerdict === "review"
+          ? "Review the flagged overlapping pages and pick a distinct angle."
+          : "Consider narrowing the audience or the sub-topic to raise the score.",
+        "Enrich with Gemini to see how competitors cover this."
+      ]
+    };
+  }
+  return {
+    verdict: "reconsider",
+    summary: `Score ${score.toFixed(1)} / 100 — below the bar for this batch. Reconsider before spending writer time.`,
+    nextSteps: [
+      "Check whether the target keyword is too broad or too narrow.",
+      "Pivot to a related but higher-leverage angle.",
+      "Archive if the score doesn't move after refinement."
+    ]
+  };
+}
+
+// ── Public entrypoint ────────────────────────────────────────────────
+
+export function analyzeTopic(input: AnalyzeInput): AnalysisResult {
+  const title = input.title.trim();
+  const targetKeyword = (input.targetKeyword || "").trim() || deriveKeywordFromTitle(title);
+
+  // Classifier — same 6-pillar breakdown Discovery uses.
+  const brandNames = [
+    input.brand.companyName,
+    ...input.competitors.map((c) => c.name)
+  ].filter(Boolean) as string[];
+
+  // Cannibalization matches — need first to inform the classifier's
+  // cannibalization-clarity score.
+  const rawMatches = findCannibalizationMatches(
+    targetKeyword,
+    input.contentLibrary
+  );
+  const cannibalization = scoreCannibalization(
+    rawMatches,
+    title,
+    targetKeyword
+  );
+
+  const classified = classifyOpportunity({
+    source: "analyzer",
+    query: targetKeyword,
+    brandNames,
+    // No live GSC data for a user-submitted topic — the classifier
+    // falls back to intent-driven defaults for demand + trending.
+    cannibalizingPageCount: cannibalization.matches.length
+  });
+
+  const playbook = detectPlaybook({
+    title,
+    targetKeyword,
+    intent: classified.intent,
+    hasCannibalizingPage: cannibalization.matches.length > 0,
+    aiCitationGap: classified.aiCitationGap,
+    isRefresh: cannibalization.verdict === "block"
+  });
+
+  const brief = buildBriefData({
+    query: targetKeyword,
+    articleTitle: title,
+    intent: classified.intent,
+    opportunityType: classified.opportunityType,
+    priority: classified.priority,
+    scoreBreakdown: classified.scoreBreakdown,
+    totalScore: classified.totalScore,
+    aiCitationGap: classified.aiCitationGap,
+    competitorUrls: input.competitors.map((c) => c.url),
+    competitorGapScore: 50,
+    aiCitationsCited: [],
+    cannibalizingPages: cannibalization.matches.map((m) => ({
+      url: m.url,
+      title: m.title
+    })),
+    brandPrimaryCta: input.brand.primaryCta,
+    playbook
+  });
+
+  const briefMarkdown = renderBriefAsMarkdown(brief, title);
+  const competitorCoverage = inferCompetitorCoverage(
+    input.competitors,
+    title
+  );
+  const aeoAngle = buildAeoAngle(
+    title,
+    classified.intent,
+    playbook,
+    classified.aiCitationGap,
+    input.brand.brandNiche
+  );
+  const alternateHeadlines = generateAlternateHeadlines(
+    title,
+    targetKeyword,
+    playbook
+  );
+  const recommendation = buildRecommendation(
+    classified.totalScore,
+    cannibalization.verdict,
+    classified.aiCitationGap
+  );
+
+  return {
+    title,
+    targetKeyword,
+    articleTitle: title,
+    intent: classified.intent,
+    opportunityType: classified.opportunityType,
+    playbook,
+    playbookLabel: PLAYBOOKS[playbook].label,
+    aiCitationGap: classified.aiCitationGap,
+    score: classified.totalScore,
+    scoreBreakdown: classified.scoreBreakdown,
+    priorityTier: derivePriorityTier(classified.totalScore),
+    cannibalization,
+    competitorCoverage,
+    brief,
+    briefMarkdown,
+    aeoAngle,
+    alternateHeadlines,
+    recommendation,
+    generatedAt: new Date().toISOString()
+  };
+}

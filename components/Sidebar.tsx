@@ -13,16 +13,17 @@ import {
 import { cn } from "@/lib/utils";
 import { useStore, useHasHydrated } from "@/lib/store";
 
+// AEO/GEO Agent (was "AI Discovery") is the demand-capture surface —
+// Gemini identifies content gaps competitors are getting cited for.
 // AI Resources holds the full content production funnel — generation
-// in the Ideas column, then triage / production / done. AI Discovery
-// is the demand-capture surface. Topic Analyzer is the intake-triage
-// workbench where the strategist analyses individual candidates
-// before pushing to either of the other surfaces. All three share the
-// same kanban chassis.
+// in the Ideas column, then triage / production / done. Topic Analyzer
+// is the intake-triage workbench where the strategist analyses
+// individual candidates before pushing to either of the other
+// surfaces. All three share the same kanban chassis.
 const items = [
-  { href: "/discovery", label: "AI Discovery", icon: Telescope },
-  { href: "/analyzer", label: "Topic Analyzer", icon: Microscope },
+  { href: "/discovery", label: "AEO/GEO Agent", icon: Telescope },
   { href: "/board", label: "AI Resources", icon: Layers },
+  { href: "/analyzer", label: "Topic Analyzer", icon: Microscope },
   { href: "/settings/api", label: "Settings", icon: Settings }
 ];
 

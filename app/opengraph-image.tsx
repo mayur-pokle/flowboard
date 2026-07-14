@@ -227,8 +227,9 @@ export default async function OpengraphImage() {
                   FlowBoard
                 </span>
               </div>
-              <NavItem icon="🔭" label="AI Discovery" count="8" />
+              <NavItem icon="🔭" label="AEO/GEO Agent" count="8" />
               <NavItem icon="▤" label="AI Resources" count="35" active />
+              <NavItem icon="🔬" label="Topic Analyzer" count="4" />
               <NavItem icon="⚙" label="Settings" />
             </div>
 

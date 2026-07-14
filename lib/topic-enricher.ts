@@ -19,26 +19,44 @@ import OpenAI from "openai";
 import Anthropic from "@anthropic-ai/sdk";
 import type { AnalysisResult } from "@/lib/topic-analyzer";
 
+export interface ArticleLink {
+  title: string;
+  url: string;
+  publisher?: string; // e.g. "example-competitor.com"
+}
+
 export interface EnrichmentResult {
   provider: "gemini" | "openai" | "anthropic" | "unavailable";
   alternateHeadlines: string[];
   competitorSummary: string;
   competitorGaps: string[];
+  // Up to 8 real article URLs the LLM knows cover this topic. Flagged
+  // as "AI-suggested" in the UI so the strategist verifies before
+  // taking action — LLMs can hallucinate URLs, so treat these as
+  // starting-point references, not confirmed sources.
+  articleLinks: ArticleLink[];
   communityAngles: string[];
   aiCitationInsights: string[];
   warnings: string[];
   generatedAt: string;
 }
 
-const SYSTEM_PROMPT = `You are a senior AEO + SEO + content strategist. A strategist has submitted a candidate topic for their brand and has ALREADY received a deterministic analysis (playbook, score, brief). Your job is ONLY to add three enrichments an LLM can meaningfully improve on:
+const SYSTEM_PROMPT = `You are a senior AEO + SEO + content strategist. A strategist has submitted a candidate topic for their brand and has ALREADY received a deterministic analysis (playbook, score, brief). Your job is to add enrichments an LLM can meaningfully improve on:
 
 1. **Alternate headlines** — 5 sharper variants of the submitted title. Each variant should differ in angle (question shape, comparison shape, worked-example shape, benchmark shape, direct-answer shape). Avoid "complete/ultimate guide" and "everything you need to know".
 
 2. **Competitor coverage read** — for the provided competitor domains, give a ONE-PARAGRAPH summary of what they likely cover for this keyword based on domain expertise, and a bulleted list of GAPS — angles they miss where the brand can win.
 
-3. **Community + AI-engine signal** — 3-5 specific ways people ask this question in community channels (Reddit, subreddits, Slack groups) or as prompts to ChatGPT / Perplexity. Reflect actual language, not corporate phrasing.
+3. **Article links** — up to 8 REAL published articles from actual competitors, industry publications, or authoritative sources that cover this topic. Rules:
+   - Only include URLs you are HIGHLY confident actually exist and match the topic. If you're uncertain, omit — do not fabricate.
+   - Prefer the provided competitor domains when their coverage exists in your knowledge.
+   - Use exact article titles (not descriptions).
+   - Include the publisher domain (e.g. "example.com") for each entry.
+   - If you don't know 8 real ones, return fewer. Empty array is acceptable — do not pad.
 
-4. **AI citation insights** — 3-5 concrete structural / factual choices that make this article likely to be cited by AI engines for this query.
+4. **Community + AI-engine signal** — 3-5 specific ways people ask this question in community channels (Reddit, subreddits, Slack groups) or as prompts to ChatGPT / Perplexity. Reflect actual language, not corporate phrasing.
+
+5. **AI citation insights** — 3-5 concrete structural / factual choices that make this article likely to be cited by AI engines for this query.
 
 Return a strict JSON object with exactly these fields (no prose, no markdown fences):
 
@@ -46,6 +64,9 @@ Return a strict JSON object with exactly these fields (no prose, no markdown fen
   "alternateHeadlines": string[],
   "competitorSummary": string,
   "competitorGaps": string[],
+  "articleLinks": [
+    { "title": string, "url": string, "publisher": string }
+  ],
   "communityAngles": string[],
   "aiCitationInsights": string[]
 }`;
@@ -188,6 +209,36 @@ function parse(raw: string): Omit<EnrichmentResult, "provider" | "warnings" | "g
             .filter((s): s is string => typeof s === "string")
             .slice(0, 7)
         : [],
+      articleLinks: Array.isArray(obj.articleLinks)
+        ? (obj.articleLinks as unknown[])
+            .map((item): ArticleLink | null => {
+              if (!item || typeof item !== "object") return null;
+              const rec = item as Record<string, unknown>;
+              const title =
+                typeof rec.title === "string" ? rec.title.trim() : "";
+              const url =
+                typeof rec.url === "string" ? rec.url.trim() : "";
+              if (!title || !url) return null;
+              // Cheap URL validation — drop anything that isn't http(s).
+              try {
+                const u = new URL(url);
+                if (u.protocol !== "http:" && u.protocol !== "https:")
+                  return null;
+              } catch {
+                return null;
+              }
+              const out: ArticleLink = { title, url };
+              if (
+                typeof rec.publisher === "string" &&
+                rec.publisher.trim().length > 0
+              ) {
+                out.publisher = rec.publisher.trim();
+              }
+              return out;
+            })
+            .filter((x): x is ArticleLink => x !== null)
+            .slice(0, 8)
+        : [],
       communityAngles: Array.isArray(obj.communityAngles)
         ? (obj.communityAngles as unknown[])
             .filter((s): s is string => typeof s === "string")
@@ -313,6 +364,7 @@ export async function enrichTopic(
     alternateHeadlines: [],
     competitorSummary: "",
     competitorGaps: [],
+    articleLinks: [],
     communityAngles: [],
     aiCitationInsights: [],
     warnings,

@@ -372,7 +372,7 @@ export function AnalyzerDetailPanel({
             {analysis.competitorCoverage.ownershipAngle}
           </p>
           {analysis.competitorCoverage.likelyCoveredBy.length > 0 ? (
-            <ul className="text-xs space-y-1">
+            <ul className="text-xs space-y-1 mb-3">
               {analysis.competitorCoverage.likelyCoveredBy.map((c) => (
                 <li key={c.url}>
                   <a
@@ -387,6 +387,87 @@ export function AnalyzerDetailPanel({
                 </li>
               ))}
             </ul>
+          ) : null}
+
+          {/* Coverage links — up to 8 direct search / article URLs
+              that surface real competitor articles on this topic.
+              When Gemini enrichment has run, its known-article URLs
+              take pride of place; otherwise the deterministic
+              search-URL candidates render. Both kinds are honest —
+              the search links are guaranteed to work, the AI-suggested
+              article links are labeled so the strategist verifies. */}
+          {enrichment?.articleLinks && enrichment.articleLinks.length > 0 ? (
+            <div className="rounded-md border border-brand-200 bg-brand-50/40 p-3 mb-2">
+              <div className="text-[11px] font-semibold text-brand-900 mb-2 inline-flex items-center gap-1">
+                <Sparkles className="size-3" />
+                Articles covering this topic
+                <span className="ml-1 text-[10px] text-brand-700 font-normal">
+                  (AI-suggested · verify before citing)
+                </span>
+              </div>
+              <ul className="space-y-1.5">
+                {enrichment.articleLinks.slice(0, 8).map((a, i) => (
+                  <li key={i} className="text-xs">
+                    <a
+                      href={a.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-brand-700 hover:underline inline-flex items-start gap-1 leading-snug"
+                    >
+                      <ExternalLink className="size-3 mt-0.5 shrink-0" />
+                      <span>
+                        <span className="font-medium">{a.title}</span>
+                        {a.publisher ? (
+                          <span className="text-ink-500 font-normal ml-1">
+                            · {a.publisher}
+                          </span>
+                        ) : null}
+                      </span>
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          {analysis.competitorCoverage.candidateLinks.length > 0 ? (
+            <div>
+              <div className="text-[10px] uppercase tracking-wider text-ink-500 mb-1.5 font-semibold">
+                {enrichment?.articleLinks && enrichment.articleLinks.length > 0
+                  ? "More — search competitor sites"
+                  : "Search competitor sites for this topic"}
+              </div>
+              <ul className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                {analysis.competitorCoverage.candidateLinks
+                  .slice(0, 8)
+                  .map((l, i) => (
+                    <li key={i}>
+                      <a
+                        href={l.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={cn(
+                          "text-[11px] rounded-md px-2 py-1.5 border inline-flex items-center gap-1.5 truncate w-full transition",
+                          l.kind === "site-search"
+                            ? "border-ink-200 bg-white hover:bg-ink-50 text-ink-700"
+                            : "border-brand-200 bg-brand-50/40 hover:bg-brand-50 text-brand-800"
+                        )}
+                      >
+                        <ExternalLink className="size-3 shrink-0" />
+                        <span className="truncate">{l.label}</span>
+                      </a>
+                    </li>
+                  ))}
+              </ul>
+              {!enrichment?.articleLinks ||
+              enrichment.articleLinks.length === 0 ? (
+                <div className="text-[10px] text-ink-500 mt-1.5">
+                  Tip: run <strong>Enrich with Gemini</strong> in the
+                  Enrichment tab to see actual article URLs Gemini knows
+                  about.
+                </div>
+              ) : null}
+            </div>
           ) : null}
         </Section>
 
@@ -528,7 +609,7 @@ export function AnalyzerDetailPanel({
             </p>
             {enrichment.competitorGaps.length > 0 ? (
               <>
-                <div className="text-[10px] uppercase tracking-wider text-ink-500 mt-2 mb-1">
+                <div className="text-[11px] uppercase tracking-wider text-ink-700 mt-3 mb-1.5 font-semibold">
                   Gaps we can own
                 </div>
                 <ul className="text-xs space-y-1 list-disc ml-4 text-ink-700">
@@ -538,6 +619,37 @@ export function AnalyzerDetailPanel({
                 </ul>
               </>
             ) : null}
+          </Section>
+        ) : null}
+
+        {enrichment.articleLinks && enrichment.articleLinks.length > 0 ? (
+          <Section title="Articles covering this topic">
+            <div className="text-[10px] text-ink-500 mb-2">
+              AI-suggested — verify each link before citing. Sourced
+              from Gemini&apos;s knowledge, not a live crawl.
+            </div>
+            <ul className="space-y-1.5">
+              {enrichment.articleLinks.slice(0, 8).map((a, i) => (
+                <li key={i} className="text-xs">
+                  <a
+                    href={a.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-brand-700 hover:underline inline-flex items-start gap-1 leading-snug"
+                  >
+                    <ExternalLink className="size-3 mt-0.5 shrink-0" />
+                    <span>
+                      <span className="font-medium">{a.title}</span>
+                      {a.publisher ? (
+                        <span className="text-ink-500 font-normal ml-1">
+                          · {a.publisher}
+                        </span>
+                      ) : null}
+                    </span>
+                  </a>
+                </li>
+              ))}
+            </ul>
           </Section>
         ) : null}
 
@@ -692,9 +804,13 @@ function Section({
 }) {
   return (
     <div>
-      <div className="text-[10px] uppercase tracking-wider text-ink-500 mb-2 font-semibold">
+      {/* Section headings on Overview + Enrichment tabs — larger and
+          darker so they anchor each block clearly. Uses ink-900 for
+          the darkest tone in the palette and text-sm (14px) sizing
+          which stands out against the panel's 12px body copy. */}
+      <h3 className="text-sm font-semibold text-ink-900 mb-2 tracking-tight">
         {title}
-      </div>
+      </h3>
       {children}
     </div>
   );

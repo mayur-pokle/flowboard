@@ -97,6 +97,17 @@ export interface AnalysisResult {
   competitorCoverage: {
     likelyCoveredBy: Array<{ name: string; url: string }>;
     ownershipAngle: string;
+    // Up to 8 candidate links that will surface real competitor
+    // articles covering this topic. Deterministically generated
+    // Google `site:` searches — clicking each one shows the actual
+    // published pieces on that competitor domain. This is the honest
+    // fallback until the Gemini enrichment step returns known URLs.
+    candidateLinks: Array<{
+      label: string; // "Search example.com" or "Web search"
+      url: string; // Actual clickable Google search URL
+      kind: "site-search" | "web-search";
+      domain?: string;
+    }>;
   };
 
   // ── Brief ──
@@ -224,22 +235,94 @@ function scoreCannibalization(
 
 function inferCompetitorCoverage(
   competitors: AnalyzeInput["competitors"],
-  submittedTitle: string
+  submittedTitle: string,
+  targetKeyword: string
 ): {
   likelyCoveredBy: Array<{ name: string; url: string }>;
   ownershipAngle: string;
+  candidateLinks: Array<{
+    label: string;
+    url: string;
+    kind: "site-search" | "web-search";
+    domain?: string;
+  }>;
 } {
   const primary = competitors.filter((c) => c.tier === "primary");
-  const relevant = (primary.length > 0 ? primary : competitors).slice(0, 5);
+  const relevant = (primary.length > 0 ? primary : competitors).slice(0, 6);
+
+  // Build up to 8 candidate links. Prefer per-competitor `site:` search
+  // URLs (so clicking one lands on real published articles from that
+  // domain). Then add up to 2 general web-search links so the
+  // strategist can see the broader SERP too.
+  const links: {
+    label: string;
+    url: string;
+    kind: "site-search" | "web-search";
+    domain?: string;
+  }[] = [];
+
+  // Prefer the keyword when short (better search recall) — otherwise
+  // the title (which may include an angle Google can match on).
+  const q =
+    (targetKeyword && targetKeyword.length >= 3
+      ? targetKeyword
+      : submittedTitle
+    ).slice(0, 140);
+  const encoded = encodeURIComponent(q);
+
+  for (const c of relevant.slice(0, 6)) {
+    const domain = extractDomain(c.url);
+    if (!domain) continue;
+    links.push({
+      label: `Search ${c.name || domain}`,
+      url: `https://www.google.com/search?q=${encodeURIComponent(
+        `site:${domain} ${q}`
+      )}`,
+      kind: "site-search",
+      domain
+    });
+  }
+  // General SERP + AI answer engines — always useful as a broader read.
+  const remaining = Math.max(0, 8 - links.length);
+  if (remaining >= 1) {
+    links.push({
+      label: `Google — "${q}"`,
+      url: `https://www.google.com/search?q=${encoded}`,
+      kind: "web-search"
+    });
+  }
+  if (remaining >= 2) {
+    links.push({
+      label: `Perplexity — "${q}"`,
+      url: `https://www.perplexity.ai/search?q=${encoded}`,
+      kind: "web-search"
+    });
+  }
+
   return {
     likelyCoveredBy: relevant.map((c) => ({ name: c.name, url: c.url })),
     ownershipAngle:
       relevant.length > 0
-        ? `${relevant.length} tracked competitor${relevant.length === 1 ? "" : "s"} likely cover this space. Differentiate on a specific angle (${
-            submittedTitle.length > 60 ? "you already have one" : "sharper vertical / stage / worked example"
+        ? `${relevant.length} tracked competitor${
+            relevant.length === 1 ? "" : "s"
+          } likely cover this space. Differentiate on a specific angle (${
+            submittedTitle.length > 60
+              ? "you already have one"
+              : "sharper vertical / stage / worked example"
           }) to earn share.`
-        : "No competitors configured — the space is either uncontested or under-mapped. Add competitors in Settings for a stronger read."
+        : "No competitors configured — the space is either uncontested or under-mapped. Add competitors in Settings for a stronger read.",
+    candidateLinks: links.slice(0, 8)
   };
+}
+
+// Extract a clean hostname from a competitor URL. Returns "" when the
+// URL is malformed rather than throwing.
+function extractDomain(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return "";
+  }
 }
 
 // ── AEO angle ────────────────────────────────────────────────────────
@@ -450,7 +533,8 @@ export function analyzeTopic(input: AnalyzeInput): AnalysisResult {
   const briefMarkdown = renderBriefAsMarkdown(brief, title);
   const competitorCoverage = inferCompetitorCoverage(
     input.competitors,
-    title
+    title,
+    targetKeyword
   );
   const aeoAngle = buildAeoAngle(
     title,

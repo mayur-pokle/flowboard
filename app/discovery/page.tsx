@@ -370,7 +370,7 @@ export default function DiscoveryKanbanPage() {
   return (
     <div className="flex-1 min-w-0 min-h-0 flex flex-col">
       <PipelineTopBar
-        title="AI Discovery"
+        title="AEO/GEO Agent"
         subtitle="Demand-capture pipeline. Identify content gaps via Gemini, accept the best, ship them to Kanban when done."
         actions={
           <>

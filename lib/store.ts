@@ -161,6 +161,16 @@ const defaultSettings: Settings = {
   communityOppProvider: "gemini",
   communityOppInstructions: "",
 
+  // Webflow publish defaults — sensible starter values (blank means
+  // the prompt asks Claude to introspect the schema first).
+  publishSiteName: "",
+  publishCollectionName: "",
+  publishAuthorName: "",
+  publishAuthorsCollection: "",
+  publishTagsCollection: "",
+  publishCategory: "",
+  publishRelatedMax: 3,
+
   competitors: []
 };
 
@@ -379,6 +389,33 @@ export const useStore = create<Store>()((set, get) => ({
           communityOppInstructions:
             (s as unknown as { communityOppInstructions?: string })
               .communityOppInstructions ?? "",
+          // Webflow publish config — hydrate the seven fields with
+          // sensible fallbacks so legacy settings rows (missing these
+          // columns before the migration ran) hydrate cleanly.
+          publishSiteName:
+            (s as unknown as { publishSiteName?: string })
+              .publishSiteName ?? "",
+          publishCollectionName:
+            (s as unknown as { publishCollectionName?: string })
+              .publishCollectionName ?? "",
+          publishAuthorName:
+            (s as unknown as { publishAuthorName?: string })
+              .publishAuthorName ?? "",
+          publishAuthorsCollection:
+            (s as unknown as { publishAuthorsCollection?: string })
+              .publishAuthorsCollection ?? "",
+          publishTagsCollection:
+            (s as unknown as { publishTagsCollection?: string })
+              .publishTagsCollection ?? "",
+          publishCategory:
+            (s as unknown as { publishCategory?: string })
+              .publishCategory ?? "",
+          publishRelatedMax:
+            typeof (s as unknown as { publishRelatedMax?: number })
+              .publishRelatedMax === "number"
+              ? (s as unknown as { publishRelatedMax: number })
+                  .publishRelatedMax
+              : 3,
           // Normalize each competitor's tier (legacy rows may be missing it).
           competitors: (s.competitors || []).map((c) => ({
             ...c,
@@ -696,7 +733,14 @@ export const useStore = create<Store>()((set, get) => ({
         "refreshOppProvider",
         "refreshOppInstructions",
         "communityOppProvider",
-        "communityOppInstructions"
+        "communityOppInstructions",
+        "publishSiteName",
+        "publishCollectionName",
+        "publishAuthorName",
+        "publishAuthorsCollection",
+        "publishTagsCollection",
+        "publishCategory",
+        "publishRelatedMax"
       ] as const) {
         if (patch[k] !== undefined) serverPatch[k] = patch[k];
       }

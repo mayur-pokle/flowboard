@@ -175,6 +175,17 @@ export default function SettingsApiPage() {
   const [savingPerTypeRefresh, setSavingPerTypeRefresh] = useState(false);
   const [savingPerTypeCommunity, setSavingPerTypeCommunity] = useState(false);
 
+  // Webflow publishing config — feeds the Publish-to-Webflow prompt.
+  const [publishSiteName, setPublishSiteName] = useState("");
+  const [publishCollectionName, setPublishCollectionName] = useState("");
+  const [publishAuthorName, setPublishAuthorName] = useState("");
+  const [publishAuthorsCollection, setPublishAuthorsCollection] =
+    useState("");
+  const [publishTagsCollection, setPublishTagsCollection] = useState("");
+  const [publishCategory, setPublishCategory] = useState("");
+  const [publishRelatedMax, setPublishRelatedMax] = useState("3");
+  const [savingPublishConfig, setSavingPublishConfig] = useState(false);
+
   const [testingSlack, setTestingSlack] = useState(false);
 
   // Competitor "add new" form
@@ -208,6 +219,17 @@ export default function SettingsApiPage() {
     setRefreshOppInstructions(settings.refreshOppInstructions || "");
     setCommunityOppProvider(settings.communityOppProvider || "gemini");
     setCommunityOppInstructions(settings.communityOppInstructions || "");
+    setPublishSiteName(settings.publishSiteName || "");
+    setPublishCollectionName(settings.publishCollectionName || "");
+    setPublishAuthorName(settings.publishAuthorName || "");
+    setPublishAuthorsCollection(settings.publishAuthorsCollection || "");
+    setPublishTagsCollection(settings.publishTagsCollection || "");
+    setPublishCategory(settings.publishCategory || "");
+    setPublishRelatedMax(
+      typeof settings.publishRelatedMax === "number"
+        ? String(settings.publishRelatedMax)
+        : "3"
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hydrated]);
 
@@ -264,6 +286,39 @@ export default function SettingsApiPage() {
   const perTypeCommunityDirty =
     communityOppProvider !== (settings.communityOppProvider || "gemini") ||
     communityOppInstructions !== (settings.communityOppInstructions || "");
+
+  async function savePublishConfig() {
+    setSavingPublishConfig(true);
+    try {
+      const rmax = Number(publishRelatedMax);
+      await updateSettings({
+        publishSiteName: publishSiteName.trim(),
+        publishCollectionName: publishCollectionName.trim(),
+        publishAuthorName: publishAuthorName.trim(),
+        publishAuthorsCollection: publishAuthorsCollection.trim(),
+        publishTagsCollection: publishTagsCollection.trim(),
+        publishCategory: publishCategory.trim(),
+        publishRelatedMax:
+          Number.isFinite(rmax) && rmax >= 0 && rmax <= 10 ? rmax : 3
+      });
+      toast("Webflow publishing config saved", "success");
+    } catch (err) {
+      toast((err as Error).message, "error");
+    } finally {
+      setSavingPublishConfig(false);
+    }
+  }
+  const publishConfigDirty =
+    publishSiteName.trim() !== (settings.publishSiteName || "") ||
+    publishCollectionName.trim() !==
+      (settings.publishCollectionName || "") ||
+    publishAuthorName.trim() !== (settings.publishAuthorName || "") ||
+    publishAuthorsCollection.trim() !==
+      (settings.publishAuthorsCollection || "") ||
+    publishTagsCollection.trim() !==
+      (settings.publishTagsCollection || "") ||
+    publishCategory.trim() !== (settings.publishCategory || "") ||
+    Number(publishRelatedMax) !== (settings.publishRelatedMax ?? 3);
 
   // ── Per-section save handlers ───────────────────────────────────
   // Each section that has multiple text inputs gets its own Save button so
@@ -969,6 +1024,112 @@ export default function SettingsApiPage() {
               dirty={perTypeCommunityDirty}
               placeholder="Guidance for AI-citation-gap content. e.g. 'Conversational tone, explicit comparison tables, numerical claims throughout.'"
             />
+          </div>
+        </Card>
+
+        {/* ───────────── Webflow publishing config ───────────── */}
+        <Card
+          icon={Send}
+          title="Webflow publishing"
+          description="Feeds the Publish-to-Webflow-via-Claude-MCP prompt on every card so Claude knows exactly which site, collection, and fields to populate — without asking you to fill them in every time."
+        >
+          <div className="grid sm:grid-cols-2 gap-3">
+            <Field label="Site name (Webflow project)">
+              <input
+                type="text"
+                value={publishSiteName}
+                onChange={(e) => setPublishSiteName(e.target.value)}
+                placeholder="e.g. Zeni"
+                className="input !text-sm"
+              />
+              <Hint>The Webflow project name Claude should target.</Hint>
+            </Field>
+            <Field label="Blog collection name">
+              <input
+                type="text"
+                value={publishCollectionName}
+                onChange={(e) => setPublishCollectionName(e.target.value)}
+                placeholder="e.g. Blog Posts"
+                className="input !text-sm"
+              />
+              <Hint>
+                CMS collection where new articles are created.
+              </Hint>
+            </Field>
+            <Field label="Default author">
+              <input
+                type="text"
+                value={publishAuthorName}
+                onChange={(e) => setPublishAuthorName(e.target.value)}
+                placeholder="e.g. Emily Koger"
+                className="input !text-sm"
+              />
+              <Hint>
+                Exact name of the item in your Authors collection.
+              </Hint>
+            </Field>
+            <Field label="Authors collection">
+              <input
+                type="text"
+                value={publishAuthorsCollection}
+                onChange={(e) =>
+                  setPublishAuthorsCollection(e.target.value)
+                }
+                placeholder="e.g. Authors"
+                className="input !text-sm"
+              />
+              <Hint>
+                Where Claude looks up the author reference.
+              </Hint>
+            </Field>
+            <Field label="Tags collection">
+              <input
+                type="text"
+                value={publishTagsCollection}
+                onChange={(e) => setPublishTagsCollection(e.target.value)}
+                placeholder="e.g. Resources Tags"
+                className="input !text-sm"
+              />
+              <Hint>
+                Multi-reference collection Claude picks tag names from.
+              </Hint>
+            </Field>
+            <Field label="Default category">
+              <input
+                type="text"
+                value={publishCategory}
+                onChange={(e) => setPublishCategory(e.target.value)}
+                placeholder="e.g. Article"
+                className="input !text-sm"
+              />
+              <Hint>
+                Value to assign to the Category field on every draft.
+              </Hint>
+            </Field>
+            <Field label="Related posts (max)">
+              <input
+                type="number"
+                min={0}
+                max={10}
+                value={publishRelatedMax}
+                onChange={(e) => setPublishRelatedMax(e.target.value)}
+                className="input !text-sm !w-24"
+              />
+              <Hint>
+                Up to how many related-post references Claude should attach.
+              </Hint>
+            </Field>
+          </div>
+          <div className="flex items-center justify-end pt-3 border-t border-ink-100 mt-3">
+            <Button
+              variant="primary"
+              onClick={savePublishConfig}
+              disabled={!publishConfigDirty || savingPublishConfig}
+              loading={savingPublishConfig}
+            >
+              <Save className="size-4" />
+              Save
+            </Button>
           </div>
         </Card>
 

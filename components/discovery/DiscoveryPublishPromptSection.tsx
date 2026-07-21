@@ -30,6 +30,13 @@ interface LibraryEntry {
 interface SettingsLite {
   companyName?: string;
   brandNiche?: string;
+  publishSiteName?: string;
+  publishCollectionName?: string;
+  publishAuthorName?: string;
+  publishAuthorsCollection?: string;
+  publishTagsCollection?: string;
+  publishCategory?: string;
+  publishRelatedMax?: number;
 }
 
 export function DiscoveryPublishPromptSection({
@@ -61,7 +68,17 @@ export function DiscoveryPublishPromptSection({
         const s = settingsRes.settings || {};
         setBrand({
           companyName: s.companyName,
-          brandNiche: s.brandNiche
+          brandNiche: s.brandNiche,
+          publishSiteName: s.publishSiteName,
+          publishCollectionName: s.publishCollectionName,
+          publishAuthorName: s.publishAuthorName,
+          publishAuthorsCollection: s.publishAuthorsCollection,
+          publishTagsCollection: s.publishTagsCollection,
+          publishCategory: s.publishCategory,
+          publishRelatedMax:
+            typeof s.publishRelatedMax === "number"
+              ? s.publishRelatedMax
+              : undefined
         });
       } catch {
         // Fail silently — the prompt still works without an interlink set.
@@ -125,6 +142,15 @@ export function DiscoveryPublishPromptSection({
       body: opportunity.contentMarkdown,
       ctaPlacements,
       brandName: brand.companyName || brand.brandNiche || "this brand",
+      publishConfig: {
+        siteName: brand.publishSiteName || undefined,
+        collectionName: brand.publishCollectionName || undefined,
+        authorName: brand.publishAuthorName || undefined,
+        authorsCollection: brand.publishAuthorsCollection || undefined,
+        tagsCollection: brand.publishTagsCollection || undefined,
+        category: brand.publishCategory || undefined,
+        relatedMax: brand.publishRelatedMax
+      },
       interlinkCandidates: library
     };
   }, [opportunity, library, brand]);

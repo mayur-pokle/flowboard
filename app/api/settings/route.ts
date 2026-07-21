@@ -120,7 +120,14 @@ export const PATCH = withAuth(async (_user, req) => {
       "refreshOppProvider",
       "refreshOppInstructions",
       "communityOppProvider",
-      "communityOppInstructions"
+      "communityOppInstructions",
+      "publishSiteName",
+      "publishCollectionName",
+      "publishAuthorName",
+      "publishAuthorsCollection",
+      "publishTagsCollection",
+      "publishCategory"
+      // publishRelatedMax handled separately below since it's numeric.
     ] as const;
     const patch: Record<string, unknown> = { updatedAt: new Date() };
     for (const k of allowed) {
@@ -128,6 +135,21 @@ export const PATCH = withAuth(async (_user, req) => {
     }
     if (body.lastGeneratedAt) {
       patch.lastGeneratedAt = new Date(body.lastGeneratedAt);
+    }
+    // Numeric publish config — accept as number OR string that parses.
+    if (
+      typeof body.publishRelatedMax === "number" &&
+      Number.isFinite(body.publishRelatedMax)
+    ) {
+      patch.publishRelatedMax = Math.max(
+        0,
+        Math.min(10, Math.round(body.publishRelatedMax))
+      );
+    } else if (typeof body.publishRelatedMax === "string") {
+      const n = Number(body.publishRelatedMax);
+      if (Number.isFinite(n)) {
+        patch.publishRelatedMax = Math.max(0, Math.min(10, Math.round(n)));
+      }
     }
     await withSchemaSelfHeal(async () => {
       await ensureRow();

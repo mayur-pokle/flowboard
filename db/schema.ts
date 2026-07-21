@@ -185,6 +185,24 @@ export const settings = pgTable("settings", {
   communityOppInstructions: text("communityOppInstructions")
     .default("")
     .notNull(),
+  // ── Webflow publish config ──
+  // Used by the "Publish to Webflow via Claude MCP" prompt so it can
+  // give Claude exact field mappings for THIS workspace's Webflow
+  // project. All optional — when blank, the prompt asks Claude to
+  // introspect the schema first.
+  publishSiteName: text("publishSiteName").default("").notNull(),
+  publishCollectionName: text("publishCollectionName")
+    .default("")
+    .notNull(),
+  publishAuthorName: text("publishAuthorName").default("").notNull(),
+  publishAuthorsCollection: text("publishAuthorsCollection")
+    .default("")
+    .notNull(),
+  publishTagsCollection: text("publishTagsCollection")
+    .default("")
+    .notNull(),
+  publishCategory: text("publishCategory").default("").notNull(),
+  publishRelatedMax: integer("publishRelatedMax").default(3).notNull(),
   lastGeneratedAt: timestamp("lastGeneratedAt", { mode: "date" }),
   updatedAt: timestamp("updatedAt", { mode: "date" }).defaultNow().notNull()
 });

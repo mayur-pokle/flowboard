@@ -208,7 +208,15 @@ const STATEMENTS: string[] = [
   `ALTER TABLE "settings" ADD COLUMN IF NOT EXISTS "refreshOppProvider" text NOT NULL DEFAULT 'anthropic'`,
   `ALTER TABLE "settings" ADD COLUMN IF NOT EXISTS "refreshOppInstructions" text NOT NULL DEFAULT ''`,
   `ALTER TABLE "settings" ADD COLUMN IF NOT EXISTS "communityOppProvider" text NOT NULL DEFAULT 'gemini'`,
-  `ALTER TABLE "settings" ADD COLUMN IF NOT EXISTS "communityOppInstructions" text NOT NULL DEFAULT ''`
+  `ALTER TABLE "settings" ADD COLUMN IF NOT EXISTS "communityOppInstructions" text NOT NULL DEFAULT ''`,
+  // ── Webflow publish config ──
+  `ALTER TABLE "settings" ADD COLUMN IF NOT EXISTS "publishSiteName" text NOT NULL DEFAULT ''`,
+  `ALTER TABLE "settings" ADD COLUMN IF NOT EXISTS "publishCollectionName" text NOT NULL DEFAULT ''`,
+  `ALTER TABLE "settings" ADD COLUMN IF NOT EXISTS "publishAuthorName" text NOT NULL DEFAULT ''`,
+  `ALTER TABLE "settings" ADD COLUMN IF NOT EXISTS "publishAuthorsCollection" text NOT NULL DEFAULT ''`,
+  `ALTER TABLE "settings" ADD COLUMN IF NOT EXISTS "publishTagsCollection" text NOT NULL DEFAULT ''`,
+  `ALTER TABLE "settings" ADD COLUMN IF NOT EXISTS "publishCategory" text NOT NULL DEFAULT ''`,
+  `ALTER TABLE "settings" ADD COLUMN IF NOT EXISTS "publishRelatedMax" integer NOT NULL DEFAULT 3`
 ];
 
 // Run all statements. Each one is wrapped in its own try/catch so a

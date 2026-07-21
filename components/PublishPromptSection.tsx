@@ -35,9 +35,19 @@ export function PublishPromptSection({ task }: { task: Task }) {
       body: c.body,
       faqs: c.faqs,
       ctaPlacements: c.ctaPlacements,
-      schemaJsonLd: c.schemaJsonLd,
       brandName:
         settings.companyName || settings.brandNiche || "this brand",
+      // Per-workspace Webflow config — the prompt uses these to give
+      // Claude exact field mappings instead of asking every time.
+      publishConfig: {
+        siteName: settings.publishSiteName || undefined,
+        collectionName: settings.publishCollectionName || undefined,
+        authorName: settings.publishAuthorName || undefined,
+        authorsCollection: settings.publishAuthorsCollection || undefined,
+        tagsCollection: settings.publishTagsCollection || undefined,
+        category: settings.publishCategory || undefined,
+        relatedMax: settings.publishRelatedMax
+      },
       interlinkCandidates: existingContent
         .filter((e) => Boolean(e.url) && Boolean(e.title))
         .slice(0, MAX_INTERLINK_CANDIDATES)

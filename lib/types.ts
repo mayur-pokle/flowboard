@@ -207,6 +207,17 @@ export interface Settings {
   communityOppProvider: "openai" | "anthropic" | "gemini";
   communityOppInstructions: string;
 
+  // ── Webflow publish config ──
+  // Feeds the Publish-to-Webflow-via-Claude-MCP prompt so Claude
+  // knows exactly which site + collection + fields to populate.
+  publishSiteName: string;
+  publishCollectionName: string;
+  publishAuthorName: string;
+  publishAuthorsCollection: string;
+  publishTagsCollection: string;
+  publishCategory: string;
+  publishRelatedMax: number;
+
   // Competitive intel
   competitors: Competitor[];
 }

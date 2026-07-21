@@ -65,6 +65,77 @@ export const GET = withAuth(async () => {
 export const POST = withAuth(async (_user, req) => {
   try {
     const body = await req.json();
+
+    // ── Bulk mode ──
+    // When body.keywords is an array, insert them in one request. Used
+    // by the "Suggest keywords" flow which produces 20+ at once.
+    // Duplicates against existing bank (case-insensitive) are skipped
+    // rather than failing the batch.
+    if (Array.isArray(body.keywords)) {
+      const incoming = body.keywords as Array<Record<string, unknown>>;
+      if (incoming.length === 0)
+        return NextResponse.json({ inserted: 0, skipped: 0, ids: [] });
+
+      const existingRows = await db.select().from(keywords);
+      const existingLower = new Set(
+        existingRows.map((r) => r.keyword.toLowerCase().trim())
+      );
+      const values: Array<typeof keywords.$inferInsert> = [];
+      const insertedIds: string[] = [];
+      const seenInBatch = new Set<string>();
+      let skipped = 0;
+      for (const item of incoming) {
+        const kw =
+          typeof item.keyword === "string" ? item.keyword.trim() : "";
+        if (!kw) {
+          skipped += 1;
+          continue;
+        }
+        const lower = kw.toLowerCase();
+        if (existingLower.has(lower) || seenInBatch.has(lower)) {
+          skipped += 1;
+          continue;
+        }
+        seenInBatch.add(lower);
+        const id = uid("kw");
+        insertedIds.push(id);
+        values.push({
+          id,
+          keyword: kw,
+          priority: PRIORITIES.includes(item.priority as KeywordPriority)
+            ? (item.priority as KeywordPriority)
+            : "P1",
+          intent: INTENTS.includes(item.intent as SearchIntentType)
+            ? (item.intent as SearchIntentType)
+            : "informational",
+          status: STATUSES.includes(item.status as KeywordStatus)
+            ? (item.status as KeywordStatus)
+            : "targeting",
+          searchVolume:
+            typeof item.searchVolume === "number"
+              ? item.searchVolume
+              : null,
+          difficulty:
+            typeof item.difficulty === "number" ? item.difficulty : null,
+          targetUrl:
+            typeof item.targetUrl === "string"
+              ? item.targetUrl.trim()
+              : null,
+          notes:
+            typeof item.notes === "string" ? item.notes.trim() : ""
+        });
+      }
+      if (values.length > 0) {
+        await db.insert(keywords).values(values);
+      }
+      return NextResponse.json({
+        inserted: values.length,
+        skipped,
+        ids: insertedIds
+      });
+    }
+
+    // ── Single mode (legacy) ──
     const keyword =
       typeof body.keyword === "string" ? body.keyword.trim() : "";
     if (!keyword) return badRequest("Keyword is required");

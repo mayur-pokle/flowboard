@@ -1,11 +1,24 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Trash2, ListChecks, Search } from "lucide-react";
+import {
+  Plus,
+  Trash2,
+  ListChecks,
+  Search,
+  Wand2,
+  X,
+  Loader2,
+  Sparkles,
+  Globe,
+  CheckSquare,
+  Square
+} from "lucide-react";
 import { useStore, useHasHydrated } from "@/lib/store";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { toast } from "@/components/Toast";
+import { cn } from "@/lib/utils";
 import type {
   Keyword,
   KeywordPriority,
@@ -61,6 +74,164 @@ export default function KeywordsPage() {
   // Filter
   const [filter, setFilter] = useState<"all" | KeywordPriority>("all");
   const [query, setQuery] = useState("");
+
+  // ── Auto-suggest state ──
+  const settings = useStore((s) => s.settings);
+  const [suggestOpen, setSuggestOpen] = useState(false);
+  const [suggesting, setSuggesting] = useState(false);
+  const [suggestions, setSuggestions] = useState<
+    Array<{
+      keyword: string;
+      priority: KeywordPriority;
+      intent: SearchIntentType;
+      reason: string;
+    }>
+  >([]);
+  const [suggestProvider, setSuggestProvider] = useState<string>("");
+  const [suggestUsedHomepage, setSuggestUsedHomepage] = useState(false);
+  const [suggestHomepageError, setSuggestHomepageError] = useState<
+    string | null
+  >(null);
+  const [selectedSuggestions, setSelectedSuggestions] = useState<
+    Set<string>
+  >(new Set());
+  const [bulkAdding, setBulkAdding] = useState(false);
+  const [suggestStep, setSuggestStep] = useState(0);
+  // Rotating loading labels while the request is in flight.
+  const suggestSteps = [
+    "Reading your brand profile…",
+    "Fetching your homepage…",
+    "Scanning competitors + content library…",
+    "Asking Gemini for prioritized keywords…",
+    "Filtering out anything already in the bank…"
+  ];
+
+  async function runSuggest() {
+    setSuggestOpen(true);
+    setSuggesting(true);
+    setSuggestions([]);
+    setSelectedSuggestions(new Set());
+    setSuggestHomepageError(null);
+    setSuggestStep(0);
+    const stepTimer = setInterval(() => {
+      setSuggestStep((s) => Math.min(suggestSteps.length - 1, s + 1));
+    }, 1600);
+    try {
+      const res = await fetch("/api/settings/suggest-keywords", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ includeHomepage: true })
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Suggestion failed");
+      const list = (json.keywords || []) as Array<{
+        keyword: string;
+        priority: KeywordPriority;
+        intent: SearchIntentType;
+        reason: string;
+      }>;
+      setSuggestions(list);
+      setSuggestProvider(json.provider || "");
+      setSuggestUsedHomepage(Boolean(json.usedHomepage));
+      setSuggestHomepageError(json.homepageError || null);
+      // Default all selected — the strategist unchecks anything they
+      // don't want.
+      setSelectedSuggestions(new Set(list.map((k) => k.keyword)));
+      if (list.length === 0) {
+        toast(
+          "No new suggestions — everything relevant may already be in your bank.",
+          "info"
+        );
+      } else if (json.provider === "deterministic") {
+        toast(
+          `Fallback set (${list.length}). Add GEMINI_API_KEY for a richer pass.`,
+          "info"
+        );
+      } else {
+        toast(
+          `Got ${list.length} suggestions from ${json.provider}.`,
+          "success"
+        );
+      }
+    } catch (err) {
+      toast((err as Error).message, "error");
+      setSuggestOpen(false);
+    } finally {
+      clearInterval(stepTimer);
+      setSuggesting(false);
+    }
+  }
+
+  function toggleSelected(keyword: string) {
+    setSelectedSuggestions((prev) => {
+      const next = new Set(prev);
+      if (next.has(keyword)) next.delete(keyword);
+      else next.add(keyword);
+      return next;
+    });
+  }
+  function selectAll() {
+    setSelectedSuggestions(new Set(suggestions.map((s) => s.keyword)));
+  }
+  function selectNone() {
+    setSelectedSuggestions(new Set());
+  }
+  function selectByPriority(p: KeywordPriority) {
+    setSelectedSuggestions(
+      new Set(
+        suggestions.filter((s) => s.priority === p).map((s) => s.keyword)
+      )
+    );
+  }
+
+  async function bulkAddSelected() {
+    const picked = suggestions.filter((s) =>
+      selectedSuggestions.has(s.keyword)
+    );
+    if (picked.length === 0) {
+      toast("Select at least one keyword to add.", "info");
+      return;
+    }
+    setBulkAdding(true);
+    try {
+      const res = await fetch("/api/keywords", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          keywords: picked.map((p) => ({
+            keyword: p.keyword,
+            priority: p.priority,
+            intent: p.intent,
+            status: "targeting",
+            notes: p.reason
+          }))
+        })
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Bulk add failed");
+      toast(
+        `Added ${json.inserted}${
+          json.skipped ? ` · ${json.skipped} duplicates skipped` : ""
+        }`,
+        "success"
+      );
+      setSuggestOpen(false);
+      setSuggestions([]);
+      setSelectedSuggestions(new Set());
+      // Re-hydrate keywords via a full refetch — the store's addKeyword
+      // path pushes optimistically but we bypassed it for bulk speed.
+      const kwRes = await fetch("/api/keywords");
+      const kwJson = await kwRes.json();
+      // Push into the store by dispatching a hydrate — or just reload
+      // the page since the settings surface is not perf-critical.
+      window.location.reload();
+      void kwJson;
+    } catch (err) {
+      toast((err as Error).message, "error");
+    } finally {
+      setBulkAdding(false);
+    }
+  }
 
   async function handleAdd() {
     const kw = newKeyword.trim();
@@ -129,6 +300,19 @@ export default function KeywordsPage() {
           <Badge tone="danger">P0: {counts.P0}</Badge>
           <Badge tone="warn">P1: {counts.P1}</Badge>
           <Badge tone="neutral">P2: {counts.P2}</Badge>
+          <Button
+            variant="primary"
+            onClick={() => void runSuggest()}
+            disabled={suggesting || bulkAdding}
+            className="ml-2"
+          >
+            {suggesting ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Wand2 className="size-4" />
+            )}
+            Suggest keywords
+          </Button>
         </div>
       </div>
 
@@ -233,7 +417,14 @@ export default function KeywordsPage() {
         {filtered.length === 0 ? (
           <div className="card p-8 text-center text-base text-ink-500">
             No keywords yet. Add the head terms and key long-tails you want
-            Flowboard to orient every topic generation around.
+            Flowboard to orient every topic generation around, or click{" "}
+            <button
+              onClick={() => void runSuggest()}
+              className="text-brand-700 underline hover:no-underline font-medium"
+            >
+              Suggest keywords
+            </button>{" "}
+            to auto-fill from your brand context.
           </div>
         ) : (
           <div className="card divide-y divide-ink-100">
@@ -248,7 +439,317 @@ export default function KeywordsPage() {
           </div>
         )}
       </div>
+
+      {/* Suggestions modal */}
+      {suggestOpen ? (
+        <SuggestKeywordsModal
+          suggesting={suggesting}
+          suggestions={suggestions}
+          selected={selectedSuggestions}
+          toggleSelected={toggleSelected}
+          selectAll={selectAll}
+          selectNone={selectNone}
+          selectByPriority={selectByPriority}
+          bulkAdding={bulkAdding}
+          onClose={() => setSuggestOpen(false)}
+          onAdd={bulkAddSelected}
+          onRefresh={runSuggest}
+          provider={suggestProvider}
+          usedHomepage={suggestUsedHomepage}
+          homepageError={suggestHomepageError}
+          websiteUrl={settings.websiteUrl}
+          suggestStep={suggestStep}
+          suggestSteps={suggestSteps}
+        />
+      ) : null}
     </div>
+  );
+}
+
+// ── Suggestions modal ──
+// Grouped by P0 / P1 / P2. Every suggestion has a checkbox + reason.
+// The strategist unchecks anything they don't want and hits "Add
+// selected". Duplicates against the existing bank were already
+// filtered server-side.
+
+function SuggestKeywordsModal({
+  suggesting,
+  suggestions,
+  selected,
+  toggleSelected,
+  selectAll,
+  selectNone,
+  selectByPriority,
+  bulkAdding,
+  onClose,
+  onAdd,
+  onRefresh,
+  provider,
+  usedHomepage,
+  homepageError,
+  websiteUrl,
+  suggestStep,
+  suggestSteps
+}: {
+  suggesting: boolean;
+  suggestions: Array<{
+    keyword: string;
+    priority: KeywordPriority;
+    intent: SearchIntentType;
+    reason: string;
+  }>;
+  selected: Set<string>;
+  toggleSelected: (k: string) => void;
+  selectAll: () => void;
+  selectNone: () => void;
+  selectByPriority: (p: KeywordPriority) => void;
+  bulkAdding: boolean;
+  onClose: () => void;
+  onAdd: () => void;
+  onRefresh: () => void;
+  provider: string;
+  usedHomepage: boolean;
+  homepageError: string | null;
+  websiteUrl: string;
+  suggestStep: number;
+  suggestSteps: string[];
+}) {
+  const grouped: Record<KeywordPriority, typeof suggestions> = {
+    P0: suggestions.filter((s) => s.priority === "P0"),
+    P1: suggestions.filter((s) => s.priority === "P1"),
+    P2: suggestions.filter((s) => s.priority === "P2")
+  };
+  const selectedCount = selected.size;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-ink-900/40 backdrop-blur-[2px] grid place-items-center px-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[85vh] flex flex-col overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="px-5 py-4 border-b border-ink-200 flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="text-base font-semibold text-ink-900 leading-tight flex items-center gap-2">
+              <Sparkles className="size-4 text-brand-600" />
+              Suggested keywords
+            </h2>
+            <p className="text-xs text-ink-500 leading-tight mt-0.5">
+              {suggesting
+                ? "Analyzing…"
+                : provider === "deterministic"
+                ? "Deterministic fallback (no LLM key configured)"
+                : provider
+                ? `Generated via ${provider}`
+                : ""}
+              {usedHomepage && websiteUrl ? (
+                <span className="ml-2 inline-flex items-center gap-1 text-emerald-700">
+                  <Globe className="size-3" />
+                  Homepage read: {websiteUrl.replace(/^https?:\/\//, "")}
+                </span>
+              ) : null}
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="size-8 grid place-items-center rounded-md hover:bg-ink-100 text-ink-500 shrink-0"
+            aria-label="Close"
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 min-h-0 overflow-auto scrollbar-thin px-5 py-4">
+          {suggesting ? (
+            <div className="py-8">
+              <div className="inline-flex items-center gap-2 text-sm text-ink-700 mb-3">
+                <Loader2 className="size-4 animate-spin text-brand-600" />
+                {suggestSteps[suggestStep]}
+              </div>
+              <div className="space-y-2 max-w-md">
+                {suggestSteps.map((label, i) => (
+                  <div
+                    key={label}
+                    className={cn(
+                      "text-xs flex items-center gap-2",
+                      i < suggestStep
+                        ? "text-ink-400"
+                        : i === suggestStep
+                        ? "text-ink-900 font-medium"
+                        : "text-ink-300"
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "size-2 rounded-full inline-block",
+                        i < suggestStep
+                          ? "bg-emerald-500"
+                          : i === suggestStep
+                          ? "bg-brand-500 animate-pulse"
+                          : "bg-ink-200"
+                      )}
+                    />
+                    {label}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : suggestions.length === 0 ? (
+            <div className="py-8 text-center text-sm text-ink-600">
+              No suggestions came back. Everything relevant might already
+              be in your bank, or the LLM had nothing to add.
+              <div className="mt-3">
+                <Button variant="secondary" onClick={onRefresh}>
+                  Try again
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <>
+              {homepageError ? (
+                <div className="mb-3 text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-md p-2">
+                  {homepageError}
+                </div>
+              ) : null}
+
+              {/* Bulk selection controls */}
+              <div className="flex items-center gap-1.5 mb-3 flex-wrap text-xs">
+                <span className="text-ink-500 mr-1">Quick select:</span>
+                <SelectChip onClick={selectAll}>All</SelectChip>
+                <SelectChip onClick={selectNone}>None</SelectChip>
+                <SelectChip onClick={() => selectByPriority("P0")}>
+                  All P0
+                </SelectChip>
+                <SelectChip onClick={() => selectByPriority("P1")}>
+                  All P1
+                </SelectChip>
+                <SelectChip onClick={() => selectByPriority("P2")}>
+                  All P2
+                </SelectChip>
+                <span className="ml-auto text-ink-500">
+                  {selectedCount} of {suggestions.length} selected
+                </span>
+              </div>
+
+              {(["P0", "P1", "P2"] as KeywordPriority[]).map((p) =>
+                grouped[p].length > 0 ? (
+                  <div key={p} className="mb-5">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Badge
+                        tone={
+                          p === "P0" ? "danger" : p === "P1" ? "warn" : "neutral"
+                        }
+                      >
+                        {p === "P0"
+                          ? "P0 · must target"
+                          : p === "P1"
+                          ? "P1 · nice to have"
+                          : "P2 · watchlist"}
+                      </Badge>
+                      <span className="text-xs text-ink-500">
+                        {grouped[p].length}{" "}
+                        {grouped[p].length === 1 ? "keyword" : "keywords"}
+                      </span>
+                    </div>
+                    <ul className="space-y-1.5">
+                      {grouped[p].map((s) => {
+                        const isSelected = selected.has(s.keyword);
+                        return (
+                          <li
+                            key={s.keyword}
+                            onClick={() => toggleSelected(s.keyword)}
+                            className={cn(
+                              "cursor-pointer rounded-md border p-2 flex items-start gap-2 transition",
+                              isSelected
+                                ? "border-brand-200 bg-brand-50/40"
+                                : "border-ink-200 bg-white hover:bg-ink-50"
+                            )}
+                          >
+                            {isSelected ? (
+                              <CheckSquare className="size-4 text-brand-600 shrink-0 mt-0.5" />
+                            ) : (
+                              <Square className="size-4 text-ink-400 shrink-0 mt-0.5" />
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-mono text-xs font-semibold text-ink-900">
+                                  {s.keyword}
+                                </span>
+                                <span className="badge text-[10px] bg-ink-100 text-ink-700 ring-1 ring-inset ring-ink-200">
+                                  {s.intent}
+                                </span>
+                              </div>
+                              {s.reason ? (
+                                <div className="text-[11px] text-ink-600 mt-1 leading-snug">
+                                  {s.reason}
+                                </div>
+                              ) : null}
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                ) : null
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-5 py-3 border-t border-ink-200 bg-ink-50/60 flex items-center justify-between gap-2 flex-wrap">
+          <div className="text-[11px] text-ink-500">
+            {suggesting
+              ? "Working…"
+              : `${selectedCount} selected — duplicates against your existing bank are auto-skipped.`}
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" onClick={onClose} disabled={bulkAdding}>
+              Cancel
+            </Button>
+            {!suggesting ? (
+              <Button variant="secondary" onClick={onRefresh}>
+                <Wand2 className="size-3.5" />
+                Regenerate
+              </Button>
+            ) : null}
+            <Button
+              variant="primary"
+              onClick={onAdd}
+              disabled={
+                suggesting || bulkAdding || selectedCount === 0
+              }
+              loading={bulkAdding}
+            >
+              <Plus className="size-4" />
+              Add {selectedCount > 0 ? selectedCount : ""} keyword
+              {selectedCount === 1 ? "" : "s"}
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SelectChip({
+  onClick,
+  children
+}: {
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="px-2 py-0.5 rounded-full text-[11px] bg-white ring-1 ring-inset ring-ink-200 text-ink-700 hover:bg-ink-50 transition"
+    >
+      {children}
+    </button>
   );
 }
 

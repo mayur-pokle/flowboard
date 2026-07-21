@@ -701,6 +701,69 @@ function AiCitationsCard({
   const [apiKey, setApiKey] = useState("");
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [suggesting, setSuggesting] = useState(false);
+
+  async function autoFill() {
+    setSuggesting(true);
+    try {
+      const res = await fetch("/api/sources/ai-citations/suggest", {
+        method: "POST"
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Suggestion failed");
+
+      // Merge into existing content rather than replacing — the
+      // strategist may have already typed something they don't want
+      // wiped. Dedup case-insensitively.
+      const mergeCsv = (existing: string, incoming: string[]): string => {
+        const cur = existing
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean);
+        const seen = new Set(cur.map((s) => s.toLowerCase()));
+        for (const item of incoming) {
+          if (!seen.has(item.toLowerCase())) {
+            cur.push(item);
+            seen.add(item.toLowerCase());
+          }
+        }
+        return cur.join(", ");
+      };
+      const mergeLines = (existing: string, incoming: string[]): string => {
+        const cur = existing
+          .split("\n")
+          .map((s) => s.trim())
+          .filter(Boolean);
+        const seen = new Set(cur.map((s) => s.toLowerCase()));
+        for (const item of incoming) {
+          if (!seen.has(item.toLowerCase())) {
+            cur.push(item);
+            seen.add(item.toLowerCase());
+          }
+        }
+        return cur.join("\n");
+      };
+
+      setCompetitorDomains((v) =>
+        mergeCsv(v, json.competitorDomains || [])
+      );
+      setBrandTerms((v) => mergeCsv(v, json.brandTerms || []));
+      setPrompts((v) => mergeLines(v, json.prompts || []));
+
+      const label =
+        json.provider === "deterministic"
+          ? "deterministic fallback"
+          : json.provider;
+      toast(
+        `Auto-filled from your brand context (${label}). Review and Save when ready.`,
+        json.provider === "deterministic" ? "info" : "success"
+      );
+    } catch (err) {
+      toast((err as Error).message, "error");
+    } finally {
+      setSuggesting(false);
+    }
+  }
 
   useEffect(() => {
     setPrompts((row?.metadata?.prompts || []).join("\n"));
@@ -830,7 +893,16 @@ function AiCitationsCard({
             className="input !text-xs font-mono"
           />
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button
+            variant="secondary"
+            onClick={autoFill}
+            loading={suggesting}
+            disabled={saving || syncing}
+          >
+            <Sparkles className="size-4" />
+            Auto-fill from brand
+          </Button>
           <Button variant="primary" onClick={save} loading={saving}>
             <Save className="size-4" />
             Save

@@ -945,10 +945,87 @@ function CompetitorSitemapsCard({
   );
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [detecting, setDetecting] = useState(false);
+  const [detectResults, setDetectResults] = useState<
+    Array<{ competitor: string; domain: string; found: number; error?: string }>
+  >([]);
 
   useEffect(() => {
     setSitemapUrls((row?.metadata?.sitemapUrls || []).join("\n"));
   }, [row?.metadata]);
+
+  async function autoDetect() {
+    setDetecting(true);
+    setDetectResults([]);
+    try {
+      const res = await fetch(
+        "/api/sources/competitor-sitemaps/discover",
+        { method: "POST" }
+      );
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Discovery failed");
+
+      // If the endpoint says "no competitors configured", surface that
+      // clearly rather than a silent no-op.
+      if (Array.isArray(json.results) && json.results.length === 0) {
+        toast(
+          json.message ||
+            "No competitors configured. Add them in Settings → Brand & APIs first.",
+          "info"
+        );
+        return;
+      }
+
+      // Merge discovered URLs into the textarea. Dedup against what's
+      // already there (case-insensitive).
+      const existing = sitemapUrls
+        .split("\n")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const seen = new Set(existing.map((s) => s.toLowerCase()));
+      const additions: string[] = [];
+      for (const url of json.urls as string[]) {
+        if (!seen.has(url.toLowerCase())) {
+          additions.push(url);
+          seen.add(url.toLowerCase());
+        }
+      }
+      if (additions.length > 0) {
+        setSitemapUrls([...existing, ...additions].join("\n"));
+      }
+
+      // Show a per-competitor summary so the user knows which hosts
+      // resolved and which didn't.
+      setDetectResults(
+        (json.results as Array<{
+          competitor: string;
+          domain: string;
+          discovered: unknown[];
+          error?: string;
+        }>).map((r) => ({
+          competitor: r.competitor,
+          domain: r.domain,
+          found: Array.isArray(r.discovered) ? r.discovered.length : 0,
+          error: r.error
+        }))
+      );
+
+      const foundTotal = additions.length;
+      const withHits = (json.results as Array<{ discovered: unknown[] }>).filter(
+        (r) => Array.isArray(r.discovered) && r.discovered.length > 0
+      ).length;
+      toast(
+        foundTotal > 0
+          ? `Added ${foundTotal} new sitemap${foundTotal === 1 ? "" : "s"} from ${withHits} competitor${withHits === 1 ? "" : "s"}. Review + Save.`
+          : "No new sitemaps found. Check the summary below the textarea.",
+        foundTotal > 0 ? "success" : "info"
+      );
+    } catch (err) {
+      toast((err as Error).message, "error");
+    } finally {
+      setDetecting(false);
+    }
+  }
 
   async function save() {
     setSaving(true);
@@ -1017,7 +1094,59 @@ function CompetitorSitemapsCard({
             className="input !text-xs leading-relaxed font-mono min-h-[96px]"
           />
         </div>
-        <div className="flex items-center gap-2">
+
+        {/* Per-competitor discovery summary — shown after Auto-detect
+            runs so the strategist knows which hosts resolved. */}
+        {detectResults.length > 0 ? (
+          <div className="rounded-md border border-ink-200 bg-ink-50/60 p-3">
+            <div className="text-[10px] uppercase tracking-wider text-ink-500 mb-2 font-semibold">
+              Auto-detect summary
+            </div>
+            <ul className="space-y-1">
+              {detectResults.map((r, i) => (
+                <li
+                  key={i}
+                  className="text-xs flex items-start gap-2"
+                >
+                  {r.found > 0 ? (
+                    <CheckCircle2 className="size-3.5 text-emerald-500 mt-0.5 shrink-0" />
+                  ) : (
+                    <XCircle className="size-3.5 text-rose-500 mt-0.5 shrink-0" />
+                  )}
+                  <span className="flex-1 min-w-0">
+                    <span className="font-medium text-ink-900">
+                      {r.competitor}
+                    </span>
+                    <span className="text-ink-500 ml-1 font-mono">
+                      {r.domain}
+                    </span>
+                    <span
+                      className={
+                        "ml-2 " +
+                        (r.found > 0 ? "text-emerald-700" : "text-ink-500")
+                      }
+                    >
+                      {r.found > 0
+                        ? `${r.found} sitemap${r.found === 1 ? "" : "s"} found`
+                        : r.error || "No sitemap"}
+                    </span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button
+            variant="secondary"
+            onClick={autoDetect}
+            loading={detecting}
+            disabled={saving || syncing}
+          >
+            <Sparkles className="size-4" />
+            Auto-detect from competitors
+          </Button>
           <Button variant="primary" onClick={save} loading={saving}>
             <Save className="size-4" />
             Save

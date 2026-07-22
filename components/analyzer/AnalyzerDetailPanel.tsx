@@ -9,7 +9,8 @@ import {
   Loader2,
   ExternalLink,
   ArrowUpRight,
-  RefreshCw
+  RefreshCw,
+  ArrowRight
 } from "lucide-react";
 import { toast } from "@/components/Toast";
 import { Button } from "@/components/ui/Button";
@@ -116,6 +117,31 @@ export function AnalyzerDetailPanel({
       toast("Topic deleted", "info");
     } catch (err) {
       toast((err as Error).message, "error");
+    }
+  }
+
+  // Swap the topic's title to one of the analyzer's alternate headlines.
+  // Fires a PATCH and refreshes the row so the score / brief render
+  // updates against the new title on next open. We don't re-analyze
+  // here — the strategist is choosing a headline, not asking for a
+  // second opinion.
+  const [swappingHeadline, setSwappingHeadline] = useState<number | null>(null);
+  async function useHeadline(idx: number, headline: string) {
+    if (headline === topic.title) return;
+    setSwappingHeadline(idx);
+    try {
+      const res = await fetch(`/api/analyzer/${topic.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: headline })
+      });
+      if (!res.ok) throw new Error("Could not update title");
+      toast("Title updated — re-analyze if you want a fresh score.", "success");
+      onRefresh();
+    } catch (err) {
+      toast((err as Error).message, "error");
+    } finally {
+      setSwappingHeadline(null);
     }
   }
 
@@ -319,13 +345,72 @@ export function AnalyzerDetailPanel({
             wrap: "bg-rose-50 border-rose-200 text-rose-900",
             icon: <AlertCircle className="size-4 text-rose-600" />
           };
+    // Inline action controls on the verdict banner — closes the
+    // workflow loop so the strategist can promote without hunting
+    // through tabs. "Reconsider" doesn't get action buttons; the
+    // recommendation is to not promote.
+    const showInlineActions =
+      canPromote && (rec.verdict === "proceed" || rec.verdict === "refine");
+    const inlineActionTone =
+      rec.verdict === "proceed"
+        ? {
+            primary:
+              "bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600",
+            secondary:
+              "bg-white hover:bg-emerald-50 text-emerald-800 border-emerald-300"
+          }
+        : {
+            primary:
+              "bg-amber-600 hover:bg-amber-700 text-white border-amber-600",
+            secondary:
+              "bg-white hover:bg-amber-50 text-amber-800 border-amber-300"
+          };
+
+    // Draft-quality inline strip — surfaces failed checks on Overview so
+    // the strategist doesn't miss them just because the Draft tab isn't
+    // active.
+    const draftStrip = draftQuality
+      ? (() => {
+          const rows: {
+            check: {
+              status: "pass" | "warning" | "fail";
+              label: string;
+            };
+          }[] = [
+            { check: draftQuality.checks.directAnswerInP1 },
+            { check: draftQuality.checks.comparisonTable },
+            { check: draftQuality.checks.faqSection },
+            { check: draftQuality.checks.cannibalizationAvoidance },
+            { check: draftQuality.checks.wordCountInRange }
+          ];
+          const passing = rows.filter((r) => r.check.status === "pass").length;
+          const failed = rows.filter((r) => r.check.status === "fail");
+          const overall = draftQuality.checks.overall;
+          const tone =
+            overall === "pass"
+              ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+              : overall === "warning"
+              ? "border-amber-200 bg-amber-50 text-amber-900"
+              : "border-rose-200 bg-rose-50 text-rose-900";
+          const icon =
+            overall === "pass" ? (
+              <CheckCircle2 className="size-3.5 text-emerald-600" />
+            ) : overall === "warning" ? (
+              <AlertTriangle className="size-3.5 text-amber-600" />
+            ) : (
+              <AlertCircle className="size-3.5 text-rose-600" />
+            );
+          return { rows, passing, failed, tone, icon };
+        })()
+      : null;
+
     return (
       <div className="space-y-4">
         {/* Recommendation banner */}
         <div className={cn("rounded-lg border p-3", recTone.wrap)}>
           <div className="flex items-start gap-2">
             {recTone.icon}
-            <div className="flex-1">
+            <div className="flex-1 min-w-0">
               <div className="text-xs font-semibold uppercase tracking-wider mb-1">
                 Recommendation · {rec.verdict}
               </div>
@@ -337,9 +422,87 @@ export function AnalyzerDetailPanel({
                   ))}
                 </ul>
               ) : null}
+              {showInlineActions ? (
+                <div className="flex items-center gap-2 flex-wrap mt-3">
+                  <button
+                    onClick={() => promote("discovery")}
+                    disabled={promoting !== null || Boolean(topic.promotedToDiscoveryId)}
+                    className={cn(
+                      "h-7 px-2.5 rounded-md text-xs font-medium inline-flex items-center gap-1 border transition disabled:opacity-60 disabled:cursor-not-allowed",
+                      inlineActionTone.primary
+                    )}
+                  >
+                    {promoting === "discovery" ? (
+                      <Loader2 className="size-3 animate-spin" />
+                    ) : (
+                      <ArrowUpRight className="size-3" />
+                    )}
+                    {topic.promotedToDiscoveryId
+                      ? "In AI Discovery"
+                      : "Send to AI Discovery"}
+                  </button>
+                  <button
+                    onClick={() => promote("resources")}
+                    disabled={promoting !== null || Boolean(topic.promotedToTaskId)}
+                    className={cn(
+                      "h-7 px-2.5 rounded-md text-xs font-medium inline-flex items-center gap-1 border transition disabled:opacity-60 disabled:cursor-not-allowed",
+                      inlineActionTone.secondary
+                    )}
+                  >
+                    {promoting === "resources" ? (
+                      <Loader2 className="size-3 animate-spin" />
+                    ) : (
+                      <ArrowUpRight className="size-3" />
+                    )}
+                    {topic.promotedToTaskId
+                      ? "In AI Resources"
+                      : "Send to AI Resources"}
+                  </button>
+                </div>
+              ) : null}
             </div>
           </div>
         </div>
+
+        {/* Draft quality inline strip — only when a draft was submitted.
+            Click jumps to the Draft tab for the full breakdown. */}
+        {draftStrip ? (
+          <button
+            onClick={() => setTab("draft")}
+            className={cn(
+              "w-full text-left rounded-lg border p-3 flex items-start gap-2 transition hover:shadow-sm",
+              draftStrip.tone
+            )}
+          >
+            {draftStrip.icon}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-baseline justify-between gap-2 flex-wrap">
+                <div className="text-xs font-semibold">
+                  Draft quality · {draftStrip.passing}/5 checks passing
+                </div>
+                <div className="text-[10px] uppercase tracking-wider inline-flex items-center gap-0.5 opacity-80">
+                  Open Draft
+                  <ArrowRight className="size-3" />
+                </div>
+              </div>
+              {draftStrip.failed.length > 0 ? (
+                <div className="text-[11px] mt-1 leading-relaxed">
+                  Failing:{" "}
+                  {draftStrip.failed.map((r, i) => (
+                    <span key={i}>
+                      {i > 0 ? ", " : ""}
+                      <span className="font-medium">{r.check.label}</span>
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-[11px] mt-1 opacity-80">
+                  All quality signals look clean.
+                </div>
+              )}
+            </div>
+          </button>
+        ) : null}
 
         {/* Cannibalization */}
         <Section title="Cannibalization risk">
@@ -524,12 +687,42 @@ export function AnalyzerDetailPanel({
           </Section>
         ) : null}
 
-        {/* Alternate headlines */}
+        {/* Alternate headlines — each row has a "Use this" click that
+            swaps the topic's title. Cheap, satisfying interaction that
+            makes the suggestions actually usable. */}
         <Section title="Alternate headlines">
-          <ul className="text-xs space-y-1 list-disc ml-4 text-ink-700">
-            {analysis.alternateHeadlines.map((h, i) => (
-              <li key={i}>{h}</li>
-            ))}
+          <ul className="space-y-1.5">
+            {analysis.alternateHeadlines.map((h, i) => {
+              const isCurrent = h === topic.title;
+              return (
+                <li
+                  key={i}
+                  className="text-xs border border-ink-200 rounded-md p-2 flex items-start gap-2 group"
+                >
+                  <span className="flex-1 min-w-0 text-ink-800 leading-snug">
+                    {h}
+                    {isCurrent ? (
+                      <span className="ml-2 text-[10px] text-emerald-700 inline-flex items-center gap-0.5">
+                        <CheckCircle2 className="size-3" />
+                        Current title
+                      </span>
+                    ) : null}
+                  </span>
+                  {!isCurrent ? (
+                    <button
+                      onClick={() => useHeadline(i, h)}
+                      disabled={swappingHeadline !== null}
+                      className="text-[10px] font-medium text-brand-700 hover:text-brand-900 hover:bg-brand-50 rounded px-1.5 py-0.5 inline-flex items-center gap-0.5 shrink-0 disabled:opacity-50"
+                    >
+                      {swappingHeadline === i ? (
+                        <Loader2 className="size-3 animate-spin" />
+                      ) : null}
+                      Use this
+                    </button>
+                  ) : null}
+                </li>
+              );
+            })}
           </ul>
         </Section>
 
@@ -878,7 +1071,9 @@ export function AnalyzerDetailPanel({
       tabs={tabs}
       activeTabId={tab}
       onTabChange={(id) =>
-        setTab(id as "overview" | "brief" | "enrichment" | "actions")
+        setTab(
+          id as "overview" | "brief" | "draft" | "enrichment" | "actions"
+        )
       }
       onDelete={deleteTopic}
       onClose={onClose}

@@ -12,7 +12,9 @@ import {
   CheckCircle2,
   AlertTriangle,
   AlertCircle,
-  ChevronRight
+  ChevronRight,
+  Search,
+  X
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { toast } from "@/components/Toast";
@@ -230,6 +232,14 @@ function AnalyzeTab({
   const draftWordCount = postBody
     ? postBody.trim().split(/\s+/).filter(Boolean).length
     : 0;
+  // Progressive disclosure: Post body stays hidden behind a link on
+  // first render. Once the strategist expands it (or the field has
+  // content, e.g. because we're revisiting a partially typed form),
+  // the textarea appears. Keeps the default form to 3 fields — the
+  // 90% case.
+  const [showPostBody, setShowPostBody] = useState<boolean>(
+    Boolean(postBody && postBody.length > 0)
+  );
   return (
     <div className="flex-1 min-h-0 overflow-auto scrollbar-thin px-6 py-6">
       <div className="max-w-3xl mx-auto space-y-6">
@@ -298,35 +308,73 @@ function AnalyzeTab({
             maxLength={2000}
           />
 
-          <div className="flex items-baseline justify-between mb-1">
-            <label className="text-xs font-medium text-ink-800 block">
-              Post body{" "}
+          {/* Progressive disclosure — Post body is collapsed by default.
+              90% of submissions are just title/keyword/notes. When the
+              strategist actually has a draft, they click to reveal. */}
+          {!showPostBody ? (
+            <button
+              type="button"
+              onClick={() => setShowPostBody(true)}
+              disabled={analyzing}
+              className="mb-4 inline-flex items-center gap-1.5 text-xs text-ink-600 hover:text-ink-900 rounded-md border border-dashed border-ink-300 hover:border-ink-400 px-3 py-2 transition w-full sm:w-auto"
+            >
+              <Sparkles className="size-3.5 text-brand-600" />
+              <span className="font-medium text-ink-800">
+                + Add a draft to check copy quality
+              </span>
               <span className="text-ink-400 font-normal">
-                (optional — paste your draft to also run quality checks)
+                (optional — runs 5 quality checks)
               </span>
-            </label>
-            {postBody ? (
-              <span className="text-[10px] text-ink-500 tabular-nums">
-                {draftWordCount.toLocaleString()} words
-              </span>
-            ) : null}
-          </div>
-          <textarea
-            value={postBody}
-            onChange={(e) => setPostBody(e.target.value)}
-            placeholder="# The article title&#10;&#10;First paragraph goes here — direct answer to the topic, ideally 40–80 words containing the target keyword…&#10;&#10;## First H2&#10;&#10;..."
-            rows={10}
-            className="input mb-4 !text-xs font-mono leading-relaxed min-h-[220px]"
-            disabled={analyzing}
-            maxLength={60000}
-          />
-          <p className="text-[11px] text-ink-500 mb-4 leading-relaxed">
-            When you paste a draft, the analyzer also runs quality checks
-            — direct-answer opening, comparison table, FAQ section,
-            cannibalization against your library, and word count vs. the
-            playbook&apos;s target range. Draft failures downgrade the
-            recommendation so you don&apos;t ship broken copy.
-          </p>
+            </button>
+          ) : (
+            <>
+              <div className="flex items-baseline justify-between mb-1">
+                <label className="text-xs font-medium text-ink-800 block">
+                  Post body{" "}
+                  <span className="text-ink-400 font-normal">
+                    (optional — paste your draft to also run quality checks)
+                  </span>
+                </label>
+                <div className="flex items-center gap-2">
+                  {postBody ? (
+                    <span className="text-[10px] text-ink-500 tabular-nums">
+                      {draftWordCount.toLocaleString()} words
+                    </span>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPostBody("");
+                      setShowPostBody(false);
+                    }}
+                    disabled={analyzing}
+                    className="text-[10px] text-ink-500 hover:text-ink-800 inline-flex items-center gap-0.5"
+                    title="Hide draft field"
+                  >
+                    <X className="size-3" />
+                    Hide
+                  </button>
+                </div>
+              </div>
+              <textarea
+                value={postBody}
+                onChange={(e) => setPostBody(e.target.value)}
+                placeholder="# The article title&#10;&#10;First paragraph goes here — direct answer to the topic, ideally 40–80 words containing the target keyword…&#10;&#10;## First H2&#10;&#10;..."
+                rows={10}
+                className="input mb-2 !text-xs font-mono leading-relaxed min-h-[220px]"
+                disabled={analyzing}
+                maxLength={60000}
+              />
+              <p className="text-[11px] text-ink-500 mb-4 leading-relaxed">
+                When you paste a draft, the analyzer also runs quality
+                checks — direct-answer opening, comparison table, FAQ
+                section, cannibalization against your library, and word
+                count vs. the playbook&apos;s target range. Draft failures
+                downgrade the recommendation so you don&apos;t ship broken
+                copy.
+              </p>
+            </>
+          )}
 
           <div className="flex items-center gap-2 flex-wrap">
             <Button
@@ -438,6 +486,8 @@ function RecentAnalysisCard({
 
 // ── Bucket tab ───────────────────────────────────────────────────────
 
+type VerdictFilter = "all" | "proceed" | "refine" | "reconsider";
+
 function BucketTab({
   topics,
   loading,
@@ -449,6 +499,31 @@ function BucketTab({
   onOpen: (id: string) => void;
   onRefresh: () => void;
 }) {
+  // Search + verdict filter. Both apply *across all 4 columns* so the
+  // strategist can slice a bucket of 30+ topics down to the 3 that need
+  // attention without column-switching.
+  const [query, setQuery] = useState("");
+  const [verdictFilter, setVerdictFilter] = useState<VerdictFilter>("all");
+
+  const filteredTopics = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return topics.filter((t) => {
+      // Verdict filter — treats un-analyzed rows as "all" only. If the
+      // strategist picks a verdict, we require an analysis payload
+      // matching that verdict.
+      if (verdictFilter !== "all") {
+        if (!t.analysis || t.analysis.recommendation.verdict !== verdictFilter) {
+          return false;
+        }
+      }
+      if (!q) return true;
+      // Search matches title + keyword. Case-insensitive substring.
+      const hayTitle = t.title.toLowerCase();
+      const hayKw = (t.targetKeyword || "").toLowerCase();
+      return hayTitle.includes(q) || hayKw.includes(q);
+    });
+  }, [topics, query, verdictFilter]);
+
   const byColumn = useMemo(() => {
     const out: Record<AnalyzerColumn, AnalyzedTopic[]> = {
       draft: [],
@@ -456,14 +531,31 @@ function BucketTab({
       approved: [],
       archived: []
     };
-    for (const t of topics) {
+    for (const t of filteredTopics) {
       const col = COLUMN_ORDER.includes(t.kanbanColumn)
         ? t.kanbanColumn
         : "draft";
       out[col].push(t);
     }
     return out;
+  }, [filteredTopics]);
+
+  // Verdict counts for the filter chips — recomputed against the full
+  // unfiltered set so the count reflects "topics matching this verdict"
+  // even after other filters are applied.
+  const verdictCounts = useMemo(() => {
+    const counts = { all: topics.length, proceed: 0, refine: 0, reconsider: 0 };
+    for (const t of topics) {
+      const v = t.analysis?.recommendation.verdict;
+      if (v === "proceed") counts.proceed++;
+      else if (v === "refine") counts.refine++;
+      else if (v === "reconsider") counts.reconsider++;
+    }
+    return counts;
   }, [topics]);
+
+  const hasFilters = Boolean(query || verdictFilter !== "all");
+  const totalMatches = filteredTopics.length;
 
   async function move(id: string, col: AnalyzerColumn) {
     try {
@@ -519,8 +611,96 @@ function BucketTab({
   }
 
   return (
-    <div className="flex-1 min-h-0 overflow-hidden p-4">
-      <div className="flex gap-3 h-full overflow-x-auto scrollbar-thin">
+    <div className="flex-1 min-h-0 overflow-hidden p-4 flex flex-col">
+      {/* Search + verdict filter — always visible when there are any
+          topics so scale doesn't sneak up on the strategist. */}
+      <div className="flex items-center gap-2 mb-3 flex-wrap">
+        <div className="relative flex-1 min-w-[220px] max-w-md">
+          <Search className="size-3.5 text-ink-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search title or keyword…"
+            className="input !h-8 !text-xs pl-8 pr-8"
+          />
+          {query ? (
+            <button
+              onClick={() => setQuery("")}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-400 hover:text-ink-700"
+              title="Clear"
+            >
+              <X className="size-3.5" />
+            </button>
+          ) : null}
+        </div>
+        <div className="flex items-center gap-1 rounded-md bg-ink-100 p-0.5 text-xs">
+          {(
+            [
+              { key: "all", label: "All", tone: "bg-white text-ink-900" },
+              {
+                key: "proceed",
+                label: "Proceed",
+                tone: "bg-emerald-500 text-white"
+              },
+              {
+                key: "refine",
+                label: "Refine",
+                tone: "bg-amber-500 text-white"
+              },
+              {
+                key: "reconsider",
+                label: "Reconsider",
+                tone: "bg-rose-500 text-white"
+              }
+            ] as const
+          ).map((chip) => {
+            const isActive = verdictFilter === chip.key;
+            const count = verdictCounts[chip.key];
+            return (
+              <button
+                key={chip.key}
+                onClick={() => setVerdictFilter(chip.key)}
+                className={cn(
+                  "h-7 px-2.5 rounded font-medium transition inline-flex items-center gap-1.5",
+                  isActive
+                    ? chip.tone + " shadow-sm"
+                    : "text-ink-600 hover:text-ink-900"
+                )}
+              >
+                {chip.label}
+                <span
+                  className={cn(
+                    "text-[10px] rounded px-1 tabular-nums",
+                    isActive
+                      ? "bg-white/20 text-white"
+                      : "bg-ink-200 text-ink-600"
+                  )}
+                >
+                  {count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+        {hasFilters ? (
+          <div className="text-[11px] text-ink-500 inline-flex items-center gap-2">
+            <span>
+              Showing {totalMatches} of {topics.length}
+            </span>
+            <button
+              onClick={() => {
+                setQuery("");
+                setVerdictFilter("all");
+              }}
+              className="text-ink-600 hover:text-ink-900 underline"
+            >
+              Clear filters
+            </button>
+          </div>
+        ) : null}
+      </div>
+      <div className="flex gap-3 flex-1 min-h-0 overflow-x-auto scrollbar-thin">
         {COLUMN_ORDER.map((col) => (
           <PipelineColumn
             key={col}
@@ -529,7 +709,9 @@ function BucketTab({
             tone={COLUMN_TONE[col]}
             emptyState={
               <div className="text-[11px] text-ink-400 text-center py-6 px-2">
-                {col === "draft"
+                {hasFilters
+                  ? "No topics match this filter."
+                  : col === "draft"
                   ? "In-flight analyses land here briefly."
                   : col === "analyzed"
                   ? "Reports ready to review."
@@ -576,6 +758,21 @@ function BucketCard({
       ? "approved"
       : topic.kanbanColumn === "approved"
       ? "archived"
+      : null;
+
+  // Verdict-colored left rail — the primary "which cards need attention"
+  // signal. Green = ship it, amber = fix things first, rose = probably
+  // skip, ink = still un-analyzed.
+  const verdict = a?.recommendation.verdict;
+  const rail: "emerald" | "amber" | "rose" | "ink" | null =
+    verdict === "proceed"
+      ? "emerald"
+      : verdict === "refine"
+      ? "amber"
+      : verdict === "reconsider"
+      ? "rose"
+      : a
+      ? "ink"
       : null;
 
   const signals = [];
@@ -650,6 +847,7 @@ function BucketCard({
           ? { label: "Reconsider", tone: "warn" }
           : undefined
       }
+      leftRail={rail}
       onClick={onOpen}
       footer={
         <>

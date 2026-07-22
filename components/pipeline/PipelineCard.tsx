@@ -115,6 +115,11 @@ export interface PipelineCardProps {
 
   // Indicator dot (e.g. green dot to flag "brief ready" or "draft ready")
   indicator?: { label: string; tone?: "success" | "info" | "warn" };
+
+  // Optional colored left rail. Used by Topic Analyzer to expose the
+  // recommendation verdict at a glance across the whole bucket without
+  // having to read each card. 3px stripe on the left edge.
+  leftRail?: "emerald" | "amber" | "rose" | "ink" | null;
 }
 
 export function PipelineCard({
@@ -134,24 +139,48 @@ export function PipelineCard({
   draggableProps,
   isDragOverlay,
   compact,
-  indicator
+  indicator,
+  leftRail
 }: PipelineCardProps) {
   const [expanded, setExpanded] = useState(false);
   const hasBreakdown =
     (breakdown && breakdown.length > 0) || Boolean(breakdownDetails);
+
+  // Left-rail tone → tailwind bg class. Rendered as an absolutely
+  // positioned strip along the card's left edge (kept out of the flow
+  // so existing padding math is unaffected).
+  const railCls =
+    leftRail === "emerald"
+      ? "bg-emerald-500"
+      : leftRail === "amber"
+      ? "bg-amber-500"
+      : leftRail === "rose"
+      ? "bg-rose-500"
+      : leftRail === "ink"
+      ? "bg-ink-300"
+      : null;
 
   return (
     <div
       {...draggableProps}
       onClick={onClick}
       className={cn(
-        "bg-white border border-ink-200 rounded-lg transition",
+        "bg-white border border-ink-200 rounded-lg transition relative overflow-hidden",
         compact ? "p-2.5" : "p-3",
         !isDragOverlay && "hover:border-ink-300 hover:shadow-md",
         onClick && !isDragOverlay && "cursor-pointer",
         isDragOverlay && "shadow-xl rotate-1"
       )}
     >
+      {railCls ? (
+        <span
+          className={cn(
+            "absolute left-0 top-0 bottom-0 w-[3px]",
+            railCls
+          )}
+          aria-hidden
+        />
+      ) : null}
       {/* Top row — badges left, score right */}
       {(typeBadge || priorityBadge || typeof score === "number") && (
         <div className="flex items-start justify-between gap-2 mb-2">

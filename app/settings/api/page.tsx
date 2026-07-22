@@ -402,7 +402,7 @@ export default function SettingsApiPage() {
 
   async function testSlack() {
     if (!serverConfigured.slackWebhook) {
-      toast("Set SLACK_WEBHOOK_URL in Vercel env vars first", "error");
+      toast("Set SLACK_WEBHOOK_URL as an environment variable first", "error");
       return;
     }
     setTestingSlack(true);
@@ -886,7 +886,7 @@ export default function SettingsApiPage() {
                 providerLabel="OpenAI"
               />
               <Hint>
-                Set <code>OPENAI_API_KEY</code> in Vercel env. Use{" "}
+                Set <code>OPENAI_API_KEY</code> as an environment variable. Use{" "}
                 <strong>Discover</strong> to list what your key supports.
               </Hint>
             </div>
@@ -929,7 +929,7 @@ export default function SettingsApiPage() {
                 providerLabel="Gemini"
               />
               <Hint>
-                Set <code>GEMINI_API_KEY</code> in Vercel. On &quot;Model not
+                Set <code>GEMINI_API_KEY</code> as an environment variable. On &quot;Model not
                 available,&quot; click <strong>Discover</strong>.
               </Hint>
             </div>
@@ -974,7 +974,7 @@ export default function SettingsApiPage() {
                 providerLabel="Anthropic"
               />
               <Hint>
-                Set <code>ANTHROPIC_API_KEY</code> in Vercel env. Get one at{" "}
+                Set <code>ANTHROPIC_API_KEY</code> as an environment variable. Get one at{" "}
                 console.anthropic.com → API Keys.
               </Hint>
             </div>
@@ -1146,7 +1146,7 @@ export default function SettingsApiPage() {
                   Webhook
                 </div>
                 <Hint>
-                  Set <code>SLACK_WEBHOOK_URL</code> in Vercel env. Create at{" "}
+                  Set <code>SLACK_WEBHOOK_URL</code> as an environment variable. Create at{" "}
                   api.slack.com/messaging/webhooks.
                 </Hint>
               </div>
@@ -1178,7 +1178,7 @@ export default function SettingsApiPage() {
 
           <Card
             title="Server-side env vars"
-            description="Set in Vercel → Project → Environment Variables."
+            description="Set as an environment variable → Project → Environment Variables."
           >
             <ul className="text-base text-ink-700 grid grid-cols-2 gap-x-3 gap-y-1">
               {[
@@ -1502,7 +1502,7 @@ function ModelSelect({
                     ? "ANTHROPIC_API_KEY"
                     : "GEMINI_API_KEY"}
                 </code>{" "}
-                is set in Vercel and valid.
+                is set as an environment variable and valid.
               </p>
             </div>
           ) : discovered && discovered.length > 0 ? (

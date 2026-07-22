@@ -32,6 +32,14 @@ import {
   type AnalyzedTopic,
   type AnalyzerColumn
 } from "@/components/analyzer/types";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
+import { LLMStepper } from "@/components/ui/LLMStepper";
+import {
+  useBoardPreferences,
+  SORT_OPTIONS,
+  priorityWeight,
+  type SortKey
+} from "@/lib/use-board-preferences";
 import { cn } from "@/lib/utils";
 
 type Tab = "analyze" | "bucket";
@@ -116,35 +124,46 @@ export default function TopicAnalyzerPage() {
   return (
     <div className="flex-1 min-w-0 min-h-0 flex flex-col">
       <PipelineTopBar
-        title="Topic Analyzer"
-        subtitle="Submit a candidate topic one at a time. Get cannibalization checks, playbook detection, brief, and a scored recommendation before you commit."
+        title="Analyzer"
+        subtitle="Submit a candidate topic. Get cannibalization checks, playbook detection, a brief, and a scored recommendation before you commit."
         actions={
-          <div className="flex items-center gap-1 rounded-md bg-ink-100 p-0.5">
+          <div
+            className="flex items-center gap-1 rounded-md bg-ink-100 p-0.5"
+            role="tablist"
+            aria-label="Analyzer sections"
+          >
             <button
               onClick={() => setTab("analyze")}
+              role="tab"
+              aria-selected={tab === "analyze"}
               className={cn(
-                "h-8 px-3 rounded text-xs font-medium transition",
+                "h-8 px-3 rounded text-xs font-medium transition focus-ring",
                 tab === "analyze"
                   ? "bg-white text-ink-900 shadow-sm"
                   : "text-ink-600 hover:text-ink-900"
               )}
             >
-              <Wand2 className="size-3.5 inline mr-1.5" />
+              <Wand2 className="size-3.5 inline mr-1.5" aria-hidden />
               Analyze
             </button>
             <button
               onClick={() => setTab("bucket")}
+              role="tab"
+              aria-selected={tab === "bucket"}
               className={cn(
-                "h-8 px-3 rounded text-xs font-medium transition",
+                "h-8 px-3 rounded text-xs font-medium transition focus-ring",
                 tab === "bucket"
                   ? "bg-white text-ink-900 shadow-sm"
                   : "text-ink-600 hover:text-ink-900"
               )}
             >
-              <Microscope className="size-3.5 inline mr-1.5" />
-              Bucket
+              <Microscope className="size-3.5 inline mr-1.5" aria-hidden />
+              Queue
               {topics.length > 0 ? (
-                <span className="ml-1.5 text-[10px] bg-ink-200 text-ink-700 rounded px-1 tabular-nums">
+                <span
+                  className="ml-1.5 text-[10px] bg-ink-200 text-ink-700 rounded px-1 tabular-nums"
+                  aria-label={`${topics.length} in queue`}
+                >
                   {topics.length}
                 </span>
               ) : null}
@@ -376,6 +395,33 @@ function AnalyzeTab({
             </>
           )}
 
+          {analyzing ? (
+            <div className="mb-3">
+              <LLMStepper
+                title="Analyzing this topic"
+                steps={
+                  postBody
+                    ? [
+                        "Reading brand + competitor context…",
+                        "Detecting playbook + intent…",
+                        "Checking cannibalization vs. your library…",
+                        "Running quality checks on your draft…",
+                        "Scoring across the 6-pillar model…"
+                      ]
+                    : [
+                        "Reading brand + competitor context…",
+                        "Detecting playbook + intent…",
+                        "Checking cannibalization vs. your library…",
+                        "Scoring across the 6-pillar model…",
+                        "Building the brief + recommendation…"
+                      ]
+                }
+                tone="brand"
+                cadenceMs={900}
+                ariaLabel="Analyzing topic in progress"
+              />
+            </div>
+          ) : null}
           <div className="flex items-center gap-2 flex-wrap">
             <Button
               variant="primary"
@@ -391,7 +437,7 @@ function AnalyzeTab({
                 onClick={onGoToBucket}
                 className="text-xs text-ink-600 hover:text-ink-900 inline-flex items-center gap-1"
               >
-                View bucket ({totalCount})
+                View queue ({totalCount})
                 <ChevronRight className="size-3" />
               </button>
             ) : null}
@@ -411,8 +457,8 @@ function AnalyzeTab({
           <div className="text-center text-xs text-ink-500 py-6">
             <Sparkles className="size-5 text-ink-300 mx-auto mb-2" />
             Start by submitting your first topic above. Every analysis
-            lands in the bucket where you can triage, enrich, and
-            promote it to AI Discovery or AI Resources.
+            lands in the queue where you can triage, enrich, and
+            promote it to Opportunities or Content.
           </div>
         ) : null}
       </div>
@@ -499,15 +545,35 @@ function BucketTab({
   onOpen: (id: string) => void;
   onRefresh: () => void;
 }) {
-  // Search + verdict filter. Both apply *across all 4 columns* so the
-  // strategist can slice a bucket of 30+ topics down to the 3 that need
-  // attention without column-switching.
-  const [query, setQuery] = useState("");
-  const [verdictFilter, setVerdictFilter] = useState<VerdictFilter>("all");
+  // Search + verdict filter + sort. Persisted per-user in localStorage
+  // so a triage cut survives reload/tab-switch. Applies across all 4
+  // columns so the strategist can slice a bucket of 30+ topics down to
+  // the 3 that need attention without column-switching.
+  const [prefs, setPrefs] = useBoardPreferences<{
+    query: string;
+    verdictFilter: VerdictFilter;
+    sortKey: SortKey;
+  }>("analyzer", {
+    query: "",
+    verdictFilter: "all",
+    sortKey: "newest"
+  });
+  const { query, verdictFilter, sortKey } = prefs;
+  const setQuery = (v: string) => setPrefs({ query: v });
+  const setVerdictFilter = (v: VerdictFilter) => setPrefs({ verdictFilter: v });
+  const setSortKey = (v: SortKey) => setPrefs({ sortKey: v });
+  // Confirm-modal state for delete. Holds the target id + title so the
+  // modal can render a preview line, plus loading state so the button
+  // spins during the DELETE round-trip.
+  const [confirmDelete, setConfirmDelete] = useState<{
+    id: string;
+    title: string;
+  } | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const filteredTopics = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return topics.filter((t) => {
+    const filtered = topics.filter((t) => {
       // Verdict filter — treats un-analyzed rows as "all" only. If the
       // strategist picks a verdict, we require an analysis payload
       // matching that verdict.
@@ -522,7 +588,32 @@ function BucketTab({
       const hayKw = (t.targetKeyword || "").toLowerCase();
       return hayTitle.includes(q) || hayKw.includes(q);
     });
-  }, [topics, query, verdictFilter]);
+    // Sort applies after filter — same visible set the user's looking
+    // at, just reordered. Sort is stable so equal-score rows keep
+    // insertion order (which is newest-first from the API).
+    const sorted = filtered.slice();
+    sorted.sort((a, b) => {
+      switch (sortKey) {
+        case "oldest":
+          return a.createdAt.localeCompare(b.createdAt);
+        case "score-desc":
+          return (b.analysis?.score ?? -1) - (a.analysis?.score ?? -1);
+        case "score-asc":
+          return (a.analysis?.score ?? 999) - (b.analysis?.score ?? 999);
+        case "priority":
+          return (
+            priorityWeight(b.analysis?.priorityTier.code) -
+            priorityWeight(a.analysis?.priorityTier.code)
+          );
+        case "title-asc":
+          return a.title.localeCompare(b.title);
+        case "newest":
+        default:
+          return b.createdAt.localeCompare(a.createdAt);
+      }
+    });
+    return sorted;
+  }, [topics, query, verdictFilter, sortKey]);
 
   const byColumn = useMemo(() => {
     const out: Record<AnalyzerColumn, AnalyzedTopic[]> = {
@@ -571,16 +662,24 @@ function BucketTab({
     }
   }
 
-  async function remove(id: string, title: string) {
-    if (!window.confirm(`Delete "${title}"? This can't be undone.`))
-      return;
+  function requestDelete(id: string, title: string) {
+    setConfirmDelete({ id, title });
+  }
+  async function performDelete() {
+    if (!confirmDelete) return;
+    setDeleting(true);
     try {
-      const res = await fetch(`/api/analyzer/${id}`, { method: "DELETE" });
+      const res = await fetch(`/api/analyzer/${confirmDelete.id}`, {
+        method: "DELETE"
+      });
       if (!res.ok) throw new Error("Delete failed");
       toast("Topic deleted", "info");
+      setConfirmDelete(null);
       onRefresh();
     } catch (err) {
       toast((err as Error).message, "error");
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -599,7 +698,7 @@ function BucketTab({
             <Microscope className="size-6" />
           </div>
           <h2 className="text-base font-semibold text-ink-900 mb-1">
-            Bucket is empty
+            Queue is empty
           </h2>
           <p className="text-sm text-ink-600 mb-4">
             Submit your first topic on the Analyze tab. It&apos;ll land
@@ -683,22 +782,39 @@ function BucketTab({
             );
           })}
         </div>
-        {hasFilters ? (
-          <div className="text-[11px] text-ink-500 inline-flex items-center gap-2">
-            <span>
-              Showing {totalMatches} of {topics.length}
-            </span>
-            <button
-              onClick={() => {
-                setQuery("");
-                setVerdictFilter("all");
-              }}
-              className="text-ink-600 hover:text-ink-900 underline"
+        <div className="ml-auto flex items-center gap-2">
+          <label className="text-[11px] text-ink-500 inline-flex items-center gap-1.5">
+            <span className="uppercase tracking-wider">Sort</span>
+            <select
+              value={sortKey}
+              onChange={(e) => setSortKey(e.target.value as SortKey)}
+              className="h-7 rounded-md border border-ink-200 bg-white text-xs px-1.5 focus-ring"
+              aria-label="Sort order"
             >
-              Clear filters
-            </button>
-          </div>
-        ) : null}
+              {SORT_OPTIONS.map((o) => (
+                <option key={o.key} value={o.key}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          {hasFilters ? (
+            <div className="text-[11px] text-ink-500 inline-flex items-center gap-2">
+              <span>
+                Showing {totalMatches} of {topics.length}
+              </span>
+              <button
+                onClick={() => {
+                  setQuery("");
+                  setVerdictFilter("all");
+                }}
+                className="text-ink-600 hover:text-ink-900 underline"
+              >
+                Clear filters
+              </button>
+            </div>
+          ) : null}
+        </div>
       </div>
       <div className="flex gap-3 flex-1 min-h-0 overflow-x-auto scrollbar-thin">
         {COLUMN_ORDER.map((col) => (
@@ -727,12 +843,23 @@ function BucketTab({
                 topic={t}
                 onOpen={() => onOpen(t.id)}
                 onMove={(c) => move(t.id, c)}
-                onDelete={() => remove(t.id, t.title)}
+                onDelete={() => requestDelete(t.id, t.title)}
               />
             ))}
           </PipelineColumn>
         ))}
       </div>
+      <ConfirmModal
+        open={confirmDelete !== null}
+        title="Delete this topic?"
+        message="This can't be undone. The full analysis, brief, any enrichment, and draft body will be permanently removed."
+        preview={confirmDelete?.title}
+        confirmLabel="Delete permanently"
+        tone="danger"
+        loading={deleting}
+        onConfirm={performDelete}
+        onCancel={() => (deleting ? null : setConfirmDelete(null))}
+      />
     </div>
   );
 }
@@ -810,9 +937,9 @@ function BucketCard({
       title={topic.title}
       subline={
         topic.targetKeyword && a
-          ? { label: "kw", value: topic.targetKeyword }
+          ? { label: "Keyword", value: topic.targetKeyword }
           : a && a.targetKeyword
-          ? { label: "kw", value: a.targetKeyword }
+          ? { label: "Keyword", value: a.targetKeyword }
           : null
       }
       typeBadge={

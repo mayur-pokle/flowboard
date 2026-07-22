@@ -64,7 +64,7 @@ export default function SignInPage() {
           </h1>
           <p className="text-base text-ink-600 leading-relaxed">
             Flowboard generates weekly AI-powered content ideas tailored to your
-            brand and competitors, then helps you take them from kanban card to
+            brand and competitors, then helps you take them from opportunity to
             published article in a few clicks.
           </p>
         </div>

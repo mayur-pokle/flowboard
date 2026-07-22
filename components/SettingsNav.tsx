@@ -39,7 +39,10 @@ export function SettingsNav() {
   const pathname = usePathname() || "";
   return (
     <div className="border-b border-ink-200 bg-white">
-      <div className="px-8 pt-3 flex items-end gap-1">
+      <nav
+        className="px-8 pt-3 flex items-end gap-1"
+        aria-label="Settings sections"
+      >
         {tabs.map((t) => {
           const active = pathname === t.href;
           const Icon = t.icon;
@@ -47,19 +50,21 @@ export function SettingsNav() {
             <Link
               key={t.href}
               href={t.href}
+              aria-current={active ? "page" : undefined}
+              title={t.description}
               className={cn(
-                "px-3 py-2 -mb-px border-b-2 text-base flex items-center gap-2 transition",
+                "px-3 py-2 -mb-px border-b-2 text-base flex items-center gap-2 transition focus-ring rounded-t-sm",
                 active
                   ? "border-brand-600 text-brand-700 font-medium"
                   : "border-transparent text-ink-500 hover:text-ink-800"
               )}
             >
-              <Icon className="size-4" />
+              <Icon className="size-4" aria-hidden />
               {t.label}
             </Link>
           );
         })}
-      </div>
+      </nav>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { X, Undo2, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -110,10 +110,67 @@ export function PipelinePanel({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
+  // Focus management: on mount, capture the element that had focus and
+  // move it into the panel. On unmount, restore focus. Provides
+  // predictable keyboard flow for panel open → interact → close.
+  const panelRef = useRef<HTMLDivElement>(null);
+  const previouslyFocused = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    previouslyFocused.current = document.activeElement as HTMLElement | null;
+    // Focus the close button as the safest first target — user can hit
+    // Escape or Tab into content from there.
+    const firstFocusable = panelRef.current?.querySelector<HTMLElement>(
+      "[data-panel-close]"
+    );
+    firstFocusable?.focus();
+    return () => {
+      previouslyFocused.current?.focus?.();
+    };
+  }, []);
+
+  // Focus trap: Tab / Shift+Tab cycles within the panel. Uses a query
+  // on visible focusable elements each keydown rather than caching a
+  // list — the tab strip + tab content changes shape as user navigates.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== "Tab") return;
+      const root = panelRef.current;
+      if (!root) return;
+      const focusable = Array.from(
+        root.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        )
+      ).filter((el) => el.offsetParent !== null);
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement as HTMLElement | null;
+      if (e.shiftKey) {
+        if (active === first || !root.contains(active)) {
+          e.preventDefault();
+          last.focus();
+        }
+      } else {
+        if (active === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   const activeTab = tabs.find((t) => t.id === activeTabId) || tabs[0];
 
   return (
-    <div className="fixed inset-y-0 right-0 w-full md:w-[680px] bg-white shadow-2xl border-l border-ink-200 flex flex-col z-50 animate-in slide-in-from-right duration-200">
+    <div
+      ref={panelRef}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="pipeline-panel-title"
+      className="fixed inset-y-0 right-0 w-full md:w-[680px] bg-white shadow-2xl border-l border-ink-200 flex flex-col z-50 animate-in slide-in-from-right duration-200"
+    >
       {/* ── Header ── */}
       <div className="px-6 py-4 border-b border-ink-200 shrink-0">
         <div className="flex items-start justify-between gap-3">
@@ -127,7 +184,10 @@ export function PipelinePanel({
                 ))}
               </div>
             ) : null}
-            <h2 className="text-lg font-bold text-ink-900 leading-tight">
+            <h2
+              id="pipeline-panel-title"
+              className="text-lg font-bold text-ink-900 leading-tight"
+            >
               {title}
             </h2>
             {subline ? (
@@ -149,26 +209,29 @@ export function PipelinePanel({
               <button
                 onClick={onMoveBack}
                 title="Move back one column"
-                className="size-8 grid place-items-center rounded-md hover:bg-ink-100 text-ink-500"
+                aria-label="Move back one column"
+                className="size-8 grid place-items-center rounded-md hover:bg-ink-100 text-ink-500 focus-ring"
               >
-                <Undo2 className="size-4" />
+                <Undo2 className="size-4" aria-hidden />
               </button>
             ) : null}
             {onDelete ? (
               <button
                 onClick={onDelete}
                 title="Delete permanently"
-                className="size-8 grid place-items-center rounded-md hover:bg-rose-50 hover:text-rose-600 text-ink-500"
+                aria-label="Delete permanently"
+                className="size-8 grid place-items-center rounded-md hover:bg-rose-50 hover:text-rose-600 text-ink-500 focus-ring"
               >
-                <Trash2 className="size-4" />
+                <Trash2 className="size-4" aria-hidden />
               </button>
             ) : null}
             <button
               onClick={onClose}
-              className="size-8 grid place-items-center rounded-md hover:bg-ink-100 text-ink-500"
-              aria-label="Close"
+              data-panel-close
+              className="size-8 grid place-items-center rounded-md hover:bg-ink-100 text-ink-500 focus-ring"
+              aria-label="Close panel"
             >
-              <X className="size-4" />
+              <X className="size-4" aria-hidden />
             </button>
           </div>
         </div>
@@ -216,7 +279,7 @@ export function PipelinePanel({
 
       {/* ── Tab strip ── */}
       <div className="px-6 pt-3 border-b border-ink-200 shrink-0">
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1" role="tablist">
           {tabs.map((t) => (
             <TabButton
               key={t.id}
@@ -399,8 +462,10 @@ function TabButton({
   return (
     <button
       onClick={onClick}
+      role="tab"
+      aria-selected={active}
       className={cn(
-        "px-3 py-2 text-xs font-medium border-b-2 transition inline-flex items-center",
+        "px-3 py-2 text-xs font-medium border-b-2 transition inline-flex items-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:rounded-sm",
         active
           ? "border-ink-900 text-ink-900"
           : "border-transparent text-ink-500 hover:text-ink-900"

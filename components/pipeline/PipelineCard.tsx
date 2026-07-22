@@ -160,15 +160,32 @@ export function PipelineCard({
       ? "bg-ink-300"
       : null;
 
+  // Keyboard access: when a card is clickable, expose it as role="button"
+  // with tabIndex + Enter/Space handlers. This lets non-mouse users open
+  // the detail panel. Drag-and-drop still uses dnd-kit's own keyboard
+  // sensors for column moves.
+  const interactive = Boolean(onClick && !isDragOverlay);
   return (
     <div
       {...draggableProps}
       onClick={onClick}
+      onKeyDown={
+        interactive
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onClick?.();
+              }
+            }
+          : undefined
+      }
+      role={interactive ? "button" : undefined}
+      tabIndex={interactive ? 0 : undefined}
       className={cn(
         "bg-white border border-ink-200 rounded-lg transition relative overflow-hidden",
         compact ? "p-2.5" : "p-3",
         !isDragOverlay && "hover:border-ink-300 hover:shadow-md",
-        onClick && !isDragOverlay && "cursor-pointer",
+        interactive && "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-1",
         isDragOverlay && "shadow-xl rotate-1"
       )}
     >

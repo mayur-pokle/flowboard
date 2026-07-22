@@ -46,6 +46,13 @@ import {
   useDraggable
 } from "@dnd-kit/core";
 import { cn } from "@/lib/utils";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
+import {
+  useBoardPreferences,
+  SORT_OPTIONS,
+  priorityWeight,
+  type SortKey
+} from "@/lib/use-board-preferences";
 
 // Mirrors the AI Discovery layout exactly:
 //   ── PipelineTopBar (title, primary CTA, secondary, search, filters) ──
@@ -91,14 +98,30 @@ export default function AIResourcesPage() {
   const selectedTaskId = useStore((s) => s.selectedTaskId);
   const selectTask = useStore((s) => s.selectTask);
 
-  // ── Local UI state ──
-  const [query, setQuery] = useState("");
-  const [priorityFilter, setPriorityFilter] = useState<"all" | TopicPriority>(
-    "all"
-  );
-  const [contentStatusFilter, setContentStatusFilter] = useState<
-    "all" | "not_started" | "generating" | "completed"
-  >("all");
+  // ── Local UI state — filters persisted across reloads ──
+  const [prefs, setPrefs] = useBoardPreferences<{
+    query: string;
+    priorityFilter: "all" | TopicPriority;
+    contentStatusFilter:
+      | "all"
+      | "not_started"
+      | "generating"
+      | "completed";
+    sortKey: SortKey;
+  }>("content", {
+    query: "",
+    priorityFilter: "all",
+    contentStatusFilter: "all",
+    sortKey: "newest"
+  });
+  const { query, priorityFilter, contentStatusFilter, sortKey } = prefs;
+  const setQuery = (v: string) => setPrefs({ query: v });
+  const setPriorityFilter = (v: "all" | TopicPriority) =>
+    setPrefs({ priorityFilter: v });
+  const setContentStatusFilter = (
+    v: "all" | "not_started" | "generating" | "completed"
+  ) => setPrefs({ contentStatusFilter: v });
+  const setSortKey = (v: SortKey) => setPrefs({ sortKey: v });
   const [showGenerator, setShowGenerator] = useState(false);
   const [instructions, setInstructions] = useState("");
   const [count, setCount] = useState(8);
@@ -211,17 +234,16 @@ export default function AIResourcesPage() {
   }
 
   // ── Clear topics ──
+  const [confirmClearIdeas, setConfirmClearIdeas] = useState(false);
+  function requestClearIdeas() {
+    setConfirmClearIdeas(true);
+  }
   async function clearAllTopics() {
-    if (
-      !window.confirm(
-        `Delete all ${topics.length} unreviewed ideas? Cards already on the board (To Do / In Progress / Done) are not affected.`
-      )
-    )
-      return;
     setClearing(true);
     try {
       for (const t of topics) await deleteTopic(t.id);
       toast(`Cleared ${topics.length} ideas`, "success");
+      setConfirmClearIdeas(false);
     } catch (err) {
       toast((err as Error).message, "error");
     } finally {
@@ -280,9 +302,37 @@ export default function AIResourcesPage() {
     await setTaskStatus(String(e.active.id), status);
   }
 
-  // ── Filtering ──
+  // ── Filtering + sorting ──
+  // A tiny helper so both Topics and Tasks use the same sort logic.
+  function applySort<T>(
+    items: T[],
+    getCreatedAt: (t: T) => string | undefined,
+    getPriority: (t: T) => string | undefined,
+    getTitle: (t: T) => string
+  ): T[] {
+    const sorted = items.slice();
+    sorted.sort((a, b) => {
+      switch (sortKey) {
+        case "oldest":
+          return (getCreatedAt(a) || "").localeCompare(getCreatedAt(b) || "");
+        case "priority":
+          return priorityWeight(getPriority(b)) - priorityWeight(getPriority(a));
+        case "title-asc":
+          return getTitle(a).localeCompare(getTitle(b));
+        // Score sorts don't apply to Content board — no numeric score
+        // on production tasks. Fall through to newest.
+        case "score-desc":
+        case "score-asc":
+        case "newest":
+        default:
+          return (getCreatedAt(b) || "").localeCompare(getCreatedAt(a) || "");
+      }
+    });
+    return sorted;
+  }
+
   const filteredTopics = useMemo(() => {
-    return topics.filter((t) => {
+    const filtered = topics.filter((t) => {
       if (query.trim()) {
         const q = query.toLowerCase().trim();
         if (
@@ -299,10 +349,18 @@ export default function AIResourcesPage() {
       // contentStatus filter so they remain accessible
       return true;
     });
-  }, [topics, query, priorityFilter]);
+    return applySort(
+      filtered,
+      (t) => t.createdAt,
+      (t) => t.priority,
+      (t) => t.title
+    );
+    // applySort is stable, sortKey change is fine to depend on
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [topics, query, priorityFilter, sortKey]);
 
   const filteredTasks = useMemo(() => {
-    return tasks.filter((t) => {
+    const filtered = tasks.filter((t) => {
       if (query.trim()) {
         const q = query.toLowerCase().trim();
         if (
@@ -322,7 +380,14 @@ export default function AIResourcesPage() {
         return false;
       return true;
     });
-  }, [tasks, query, priorityFilter, contentStatusFilter]);
+    return applySort(
+      filtered,
+      (t) => t.createdAt,
+      (t) => t.topic.priority,
+      (t) => t.topic.title
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tasks, query, priorityFilter, contentStatusFilter, sortKey]);
 
   const tasksByStatus: Record<Status, Task[]> = useMemo(
     () => ({
@@ -342,7 +407,7 @@ export default function AIResourcesPage() {
   if (!hydrated) {
     return (
       <div className="flex-1 min-w-0 min-h-0 flex flex-col">
-        <PipelineTopBar title="AI Resources" subtitle="Loading…" />
+        <PipelineTopBar title="Content" subtitle="Loading…" />
       </div>
     );
   }
@@ -353,8 +418,8 @@ export default function AIResourcesPage() {
   return (
     <div className="flex-1 min-w-0 min-h-0 flex flex-col">
       <PipelineTopBar
-        title="AI Resources"
-        subtitle="Generate content ideas with AI, accept the best, ship them through To Do → In Progress → Done."
+        title="Content"
+        subtitle="Generate ideas with AI, accept the best, and ship them through To Do → In Progress → Done."
         actions={
           <>
             <Button
@@ -371,7 +436,7 @@ export default function AIResourcesPage() {
             </Button>
             {topics.length > 0 ? (
               <button
-                onClick={() => void clearAllTopics()}
+                onClick={requestClearIdeas}
                 disabled={clearing || generating}
                 className="h-9 px-3 rounded-md text-xs text-ink-500 hover:text-rose-600 hover:bg-rose-50 inline-flex items-center gap-1.5 transition disabled:opacity-50"
                 title="Delete all unreviewed ideas"
@@ -442,6 +507,24 @@ export default function AIResourcesPage() {
             >
               Not started
             </FilterPill>
+            <span className="h-4 w-px bg-ink-200 mx-1" aria-hidden />
+            <label className="text-[11px] text-ink-500 inline-flex items-center gap-1.5">
+              <span className="uppercase tracking-wider">Sort</span>
+              <select
+                value={sortKey}
+                onChange={(e) => setSortKey(e.target.value as SortKey)}
+                className="h-7 rounded-md border border-ink-200 bg-white text-xs px-1.5 focus-ring"
+                aria-label="Sort order"
+              >
+                {SORT_OPTIONS.filter(
+                  (o) => o.key !== "score-desc" && o.key !== "score-asc"
+                ).map((o) => (
+                  <option key={o.key} value={o.key}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </label>
           </>
         }
         countLabel={`${totalShown} of ${totalAll}`}
@@ -637,6 +720,17 @@ export default function AIResourcesPage() {
           onClick={() => selectTask(null)}
         />
       ) : null}
+
+      <ConfirmModal
+        open={confirmClearIdeas}
+        title="Delete all unreviewed ideas?"
+        message={`This permanently removes ${topics.length} AI-generated ideas from the queue. Cards already on the board (To Do / In Progress / Done) are not affected.`}
+        confirmLabel={`Delete ${topics.length} idea${topics.length === 1 ? "" : "s"}`}
+        tone="danger"
+        loading={clearing}
+        onConfirm={clearAllTopics}
+        onCancel={() => (clearing ? null : setConfirmClearIdeas(false))}
+      />
     </div>
   );
 }
@@ -671,7 +765,7 @@ function TopicRow({
     <PipelineCard
       id={topic.id}
       title={topic.title}
-      subline={{ label: "kw", value: topic.targetKeyword }}
+      subline={{ label: "Keyword", value: topic.targetKeyword }}
       typeBadge={{
         label: topic.contentType,
         className: TYPE_TONE[topic.contentType] || "bg-ink-100 text-ink-700"

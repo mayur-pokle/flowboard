@@ -144,7 +144,7 @@ export default function KeywordsPage() {
         );
       } else if (json.provider === "deterministic") {
         toast(
-          `Fallback set (${list.length}). Add GEMINI_API_KEY for a richer pass.`,
+          `Fallback set (${list.length}). Connect an AI provider in Settings for a richer pass.`,
           "info"
         );
       } else {

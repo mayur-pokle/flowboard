@@ -37,6 +37,8 @@ import {
   type PanelHeaderBadge,
   type PanelTab
 } from "@/components/pipeline/PipelinePanel";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
+import { LLMStepper } from "@/components/ui/LLMStepper";
 import { cn } from "@/lib/utils";
 
 const STATUS_LABELS: Record<Status, string> = {
@@ -84,6 +86,7 @@ export function CardDetailPanel({ task }: { task: Task }) {
   const [tagInput, setTagInput] = useState("");
   const [autoGenAttempted, setAutoGenAttempted] = useState(false);
   const [editingContent, setEditingContent] = useState(false);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const commentCount = useStore(
     (s) => (s.commentsByTaskId[task.id] || []).length
   );
@@ -558,9 +561,10 @@ export function CardDetailPanel({ task }: { task: Task }) {
 
   // ── Shared chassis ──
   return (
+    <>
     <PipelinePanel
       title={task.topic.title}
-      subline={{ label: "kw", value: task.topic.targetKeyword }}
+      subline={{ label: "Keyword", value: task.topic.targetKeyword }}
       badges={badges}
       score={{
         value: speedometerValue,
@@ -590,14 +594,24 @@ export function CardDetailPanel({ task }: { task: Task }) {
         setActiveTab(id as "overview" | "content" | "performance" | "comments")
       }
       onClose={() => selectTask(null)}
-      onDelete={() => {
-        if (confirm("Delete this task? This cannot be undone.")) {
-          deleteTask(task.id);
-          selectTask(null);
-          toast("Task deleted", "info");
-        }
-      }}
+      onDelete={() => setConfirmDeleteOpen(true)}
     />
+    <ConfirmModal
+      open={confirmDeleteOpen}
+      title="Delete this task?"
+      message="This permanently removes the task along with its brief, any generated content, and comments. Cards already promoted to Opportunities are not affected."
+      preview={task.topic.title}
+      confirmLabel="Delete permanently"
+      tone="danger"
+      onConfirm={() => {
+        deleteTask(task.id);
+        selectTask(null);
+        setConfirmDeleteOpen(false);
+        toast("Task deleted", "info");
+      }}
+      onCancel={() => setConfirmDeleteOpen(false)}
+    />
+  </>
   );
 }
 
@@ -903,10 +917,18 @@ function ContentStatusRow({
 }) {
   if (status === "generating") {
     return (
-      <div className="flex items-center gap-2 text-base text-ink-700">
-        <Loader2 className="size-4 animate-spin text-brand-600" />
-        Generating long-form SEO content (this can take 10-30 seconds with live AI)…
-      </div>
+      <LLMStepper
+        title="Generating long-form SEO content"
+        steps={[
+          "Loading the playbook + brand voice…",
+          "Studying the topic + target keyword…",
+          "Drafting sections + direct-answer opener…",
+          "Adding FAQ, CTA placements, and schema…",
+          "Running quality checks on the draft…"
+        ]}
+        tone="brand"
+        ariaLabel="Content generation in progress"
+      />
     );
   }
   if (status === "completed") {

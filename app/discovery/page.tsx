@@ -45,6 +45,14 @@ import {
 import type { Opportunity } from "@/components/discovery/types";
 import type { OpportunityType } from "@/lib/opportunity-classifier";
 import { cn } from "@/lib/utils";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
+import { LLMStepper } from "@/components/ui/LLMStepper";
+import {
+  useBoardPreferences,
+  SORT_OPTIONS,
+  priorityWeight,
+  type SortKey
+} from "@/lib/use-board-preferences";
 
 // dnd-kit
 import {
@@ -81,11 +89,26 @@ export default function DiscoveryKanbanPage() {
   const [sampleBannerDismissed, setSampleBannerDismissed] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
-  const [query, setQuery] = useState("");
-  const [signalFilter, setSignalFilter] = useState<
-    "all" | "trending" | "ai-gap" | "both"
-  >("all");
-  const [typeFilter, setTypeFilter] = useState<"all" | OpportunityType>("all");
+  // Persisted filter + sort state — reloads with the same triage cut
+  // the strategist last used.
+  const [prefs, setPrefs] = useBoardPreferences<{
+    query: string;
+    signalFilter: "all" | "trending" | "ai-gap" | "both";
+    typeFilter: "all" | OpportunityType;
+    sortKey: SortKey;
+  }>("opportunities", {
+    query: "",
+    signalFilter: "all",
+    typeFilter: "all",
+    sortKey: "score-desc"
+  });
+  const { query, signalFilter, typeFilter, sortKey } = prefs;
+  const setQuery = (v: string) => setPrefs({ query: v });
+  const setSignalFilter = (v: "all" | "trending" | "ai-gap" | "both") =>
+    setPrefs({ signalFilter: v });
+  const setTypeFilter = (v: "all" | OpportunityType) =>
+    setPrefs({ typeFilter: v });
+  const setSortKey = (v: SortKey) => setPrefs({ sortKey: v });
   const [rejectStack, setRejectStack] = useState<Reject[]>([]);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
 
@@ -127,13 +150,27 @@ export default function DiscoveryKanbanPage() {
 
   // ── Clear all ──
   const [clearing, setClearing] = useState(false);
+  const [confirmClearOpen, setConfirmClearOpen] = useState(false);
+  const [confirmClearSamplesOpen, setConfirmClearSamplesOpen] = useState(false);
+  const [clearingSamples, setClearingSamples] = useState(false);
+  function requestClearAll() {
+    setConfirmClearOpen(true);
+  }
+  async function performClearSamples() {
+    setClearingSamples(true);
+    try {
+      await fetch("/api/discoveries/seed", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clear: true })
+      });
+      await reload();
+      setConfirmClearSamplesOpen(false);
+    } finally {
+      setClearingSamples(false);
+    }
+  }
   async function clearAll() {
-    if (
-      !window.confirm(
-        "Clear every opportunity on the board? This permanently deletes all rows — Intake, New, In-progress, Done, and Rejected. You'll start from a clean slate."
-      )
-    )
-      return;
     setClearing(true);
     try {
       const res = await fetch("/api/discoveries/clear-all", {
@@ -149,12 +186,12 @@ export default function DiscoveryKanbanPage() {
       toast((err as Error).message, "error");
     } finally {
       setClearing(false);
+      setConfirmClearOpen(false);
     }
   }
 
   // ── Identify Gaps ──
   const [identifying, setIdentifying] = useState(false);
-  const [identifyStep, setIdentifyStep] = useState(0);
   const identifySteps = [
     "Reading your brand context…",
     "Scanning competitor coverage…",
@@ -162,15 +199,6 @@ export default function DiscoveryKanbanPage() {
     "Asking Gemini for the biggest gaps…",
     "Scoring and queuing into Intake…"
   ];
-  useEffect(() => {
-    if (!identifying) return;
-    setIdentifyStep(0);
-    const t = setInterval(() => {
-      setIdentifyStep((s) => Math.min(identifySteps.length - 1, s + 1));
-    }, 1800);
-    return () => clearInterval(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [identifying]);
 
   async function identifyGaps() {
     setIdentifying(true);
@@ -184,7 +212,7 @@ export default function DiscoveryKanbanPage() {
       if (!res.ok) throw new Error(json.error || "Could not identify gaps");
       if (json.provider === "mock") {
         toast(
-          `Loaded ${json.inserted} sample gaps (no LLM key configured). Add GEMINI_API_KEY to identify real gaps.`,
+          `Loaded ${json.inserted} sample gaps. Connect an AI provider in Settings to identify real gaps.`,
           "info"
         );
       } else {
@@ -203,7 +231,7 @@ export default function DiscoveryKanbanPage() {
 
   // ── Filtering ──
   const filtered = useMemo(() => {
-    return items.filter((o) => {
+    const filteredList = items.filter((o) => {
       if (query.trim()) {
         const q = query.toLowerCase().trim();
         if (
@@ -222,7 +250,31 @@ export default function DiscoveryKanbanPage() {
         return false;
       return true;
     });
-  }, [items, query, signalFilter, typeFilter]);
+    // Sort AFTER filter — preserves whatever ordering the user picked
+    // across the visible set. Opportunities don't carry a createdAt
+    // timestamp, so "newest/oldest" fall back to score-desc — score is
+    // the natural ordering for opportunity discovery.
+    const sorted = filteredList.slice();
+    sorted.sort((a, b) => {
+      switch (sortKey) {
+        case "score-asc":
+          return (a.score ?? 999) - (b.score ?? 999);
+        case "priority":
+          return (
+            priorityWeight(String(b.priority)) -
+            priorityWeight(String(a.priority))
+          );
+        case "title-asc":
+          return a.query.localeCompare(b.query);
+        case "newest":
+        case "oldest":
+        case "score-desc":
+        default:
+          return (b.score ?? -1) - (a.score ?? -1);
+      }
+    });
+    return sorted;
+  }, [items, query, signalFilter, typeFilter, sortKey]);
 
   const byColumn = useMemo(() => {
     const out: Record<KanbanColumn, Opportunity[]> = {
@@ -321,7 +373,7 @@ export default function DiscoveryKanbanPage() {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Mark done failed");
-      toast("Marked done — Kanban task created on /board", "success");
+      toast("Marked done — added to your Content pipeline.", "success");
       await reload();
     } catch (err) {
       toast((err as Error).message, "error");
@@ -370,8 +422,8 @@ export default function DiscoveryKanbanPage() {
   return (
     <div className="flex-1 min-w-0 min-h-0 flex flex-col">
       <PipelineTopBar
-        title="AEO/GEO Agent"
-        subtitle="Demand-capture pipeline. Identify content gaps via Gemini, accept the best, ship them to Kanban when done."
+        title="Opportunities"
+        subtitle="Find content gaps your competitors are winning. Accept the best, promote them into Content when ready to write."
         actions={
           <>
             <Button
@@ -391,7 +443,7 @@ export default function DiscoveryKanbanPage() {
             </Link>
             {items.length + rejected.length > 0 ? (
               <button
-                onClick={() => void clearAll()}
+                onClick={requestClearAll}
                 disabled={clearing || identifying}
                 className="h-9 px-3 rounded-md text-xs text-ink-500 hover:text-rose-600 hover:bg-rose-50 inline-flex items-center gap-1.5 transition disabled:opacity-50"
                 title="Delete every opportunity and start fresh"
@@ -463,23 +515,36 @@ export default function DiscoveryKanbanPage() {
                 </FilterPill>
               )
             )}
+            <span className="h-4 w-px bg-ink-200 mx-1" aria-hidden />
+            <label className="text-[11px] text-ink-500 inline-flex items-center gap-1.5">
+              <span className="uppercase tracking-wider">Sort</span>
+              <select
+                value={sortKey}
+                onChange={(e) => setSortKey(e.target.value as SortKey)}
+                className="h-7 rounded-md border border-ink-200 bg-white text-xs px-1.5 focus-ring"
+                aria-label="Sort order"
+              >
+                {SORT_OPTIONS.filter(
+                  (o) => o.key !== "newest" && o.key !== "oldest"
+                ).map((o) => (
+                  <option key={o.key} value={o.key}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </label>
           </>
         }
         countLabel={`${filtered.length} of ${items.length}`}
         banner={
           <>
             {identifying ? (
-              <div className="rounded-lg bg-brand-50 ring-1 ring-inset ring-brand-200 px-3 py-2 flex items-center gap-3 text-xs">
-                <Loader2 className="size-3.5 text-brand-700 animate-spin shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <div className="font-medium text-brand-900 mb-1">
-                    Gemini is identifying content gaps for your brand
-                  </div>
-                  <div className="text-brand-700">
-                    {identifySteps[identifyStep]}
-                  </div>
-                </div>
-              </div>
+              <LLMStepper
+                title="Identifying content gaps for your brand"
+                steps={identifySteps}
+                tone="brand"
+                ariaLabel="Identifying content gaps in progress"
+              />
             ) : null}
             {sampleCount > 0 && !sampleBannerDismissed && !identifying ? (
               <div className="rounded-lg bg-brand-50 ring-1 ring-inset ring-brand-200 px-3 py-2 flex items-center gap-2 text-xs">
@@ -489,20 +554,7 @@ export default function DiscoveryKanbanPage() {
                   opportunities loaded so you can try the full workflow.
                 </div>
                 <button
-                  onClick={async () => {
-                    if (
-                      window.confirm(
-                        "Clear all sample opportunities? Real data from connected sources stays."
-                      )
-                    ) {
-                      await fetch("/api/discoveries/seed", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ clear: true })
-                      });
-                      await reload();
-                    }
-                  }}
+                  onClick={() => setConfirmClearSamplesOpen(true)}
                   className="text-brand-700 underline hover:text-brand-900"
                 >
                   Clear samples
@@ -630,6 +682,30 @@ export default function DiscoveryKanbanPage() {
           }}
         />
       ) : null}
+
+      <ConfirmModal
+        open={confirmClearOpen}
+        title="Clear all opportunities?"
+        message="This permanently deletes every row on the board — Intake, New, In-progress, Done, and Rejected. Your brand profile and sources stay intact. You'll start with a clean slate."
+        confirmLabel="Clear all"
+        tone="danger"
+        loading={clearing}
+        onConfirm={clearAll}
+        onCancel={() => (clearing ? null : setConfirmClearOpen(false))}
+      />
+
+      <ConfirmModal
+        open={confirmClearSamplesOpen}
+        title="Clear sample opportunities?"
+        message="This removes only the demo opportunities loaded to help you try the workflow. Real data from connected sources stays untouched."
+        confirmLabel="Clear samples"
+        tone="warning"
+        loading={clearingSamples}
+        onConfirm={performClearSamples}
+        onCancel={() =>
+          clearingSamples ? null : setConfirmClearSamplesOpen(false)
+        }
+      />
     </div>
   );
 }
@@ -777,7 +853,7 @@ function OpportunityRow({
     return (
       <div className="flex-1 text-[10px] text-ink-500 inline-flex items-center gap-1">
         <CheckCircle2 className="size-3 text-emerald-500" />
-        Published to Kanban
+        In Content pipeline
       </div>
     );
   })();
@@ -788,7 +864,7 @@ function OpportunityRow({
       title={opp.query}
       subline={
         targetKw && targetKw.toLowerCase() !== opp.query.toLowerCase()
-          ? { label: "kw", value: targetKw }
+          ? { label: "Keyword", value: targetKw }
           : null
       }
       typeBadge={{

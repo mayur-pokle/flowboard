@@ -10,13 +10,13 @@ const SITE_URL =
 
 const OG_DESCRIPTION =
   "Spot content opportunities. Ship them faster. AI-powered topic discovery, " +
-  "Kanban execution, and SEO-ready content generation in one tool.";
+  "board-based execution, and SEO-ready content generation in one tool.";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: "Flowboard — AI Content Opportunity Engine",
   description:
-    "Discover, evaluate, and execute AI-powered content opportunities — calculators, templates, guides, and more — on a Trello-style Kanban board.",
+    "Discover, evaluate, and execute AI-powered content opportunities — calculators, templates, guides, and more — on one board.",
   icons: { icon: "/favicon.svg" },
   openGraph: {
     title: "Flowboard — Spot content opportunities. Ship them faster.",

@@ -37,6 +37,8 @@ import {
 import type { Opportunity } from "./types";
 import type { QualityChecks, CheckStatus } from "@/lib/content-quality";
 import { renderMarkdown } from "@/lib/markdown-mini";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
+import { LLMStepper } from "@/components/ui/LLMStepper";
 import { cn } from "@/lib/utils";
 import {
   PipelinePanel,
@@ -46,7 +48,7 @@ import {
 import { DiscoveryPublishPromptSection } from "./DiscoveryPublishPromptSection";
 import { derivePriorityTier } from "@/lib/opportunity-classifier";
 
-type Tab = "brief" | "content" | "quality";
+type Tab = "brief" | "content";
 
 interface Props {
   opportunity: Opportunity;
@@ -181,7 +183,7 @@ export function DetailPanel({
       setTab("content");
       if (json.isTemplate) {
         toast(
-          "Template returned (no LLM available). Fill in the [WRITE] blocks — set GEMINI_API_KEY / OPENAI_API_KEY for real output.",
+          "Template returned. Connect an AI provider in Settings for real generated output; for now fill in the [WRITE] blocks manually.",
           "info"
         );
       } else {
@@ -238,13 +240,18 @@ export function DetailPanel({
     }
   }
 
+  // Confirm state — regen overwrites the draft, delete removes the
+  // opportunity. Both use the shared ConfirmModal so focus/keyboard/
+  // async-loading are handled consistently.
+  const [confirmRegen, setConfirmRegen] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  function requestRegen() {
+    setConfirmRegen(true);
+  }
+  function requestDelete() {
+    setConfirmDelete(true);
+  }
   async function regenerateContent() {
-    if (
-      !window.confirm(
-        "Regenerate will overwrite the stored draft. Continue?"
-      )
-    )
-      return;
     setBusy("regen");
     try {
       const res = await fetch(`/api/discoveries/${opportunity.id}/content`, {
@@ -258,6 +265,7 @@ export function DetailPanel({
         json.isTemplate ? "Template overwrite — fill in [WRITE]s" : "Regenerated",
         "success"
       );
+      setConfirmRegen(false);
       onRefresh();
     } catch (err) {
       toast((err as Error).message, "error");
@@ -282,7 +290,10 @@ export function DetailPanel({
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Move back failed");
-      toast(`Moved back to ${json.kanbanColumn.replace("_", " ")}`, "success");
+      toast(
+        `Moved back to ${String(json.kanbanColumn).replace(/_/g, " ")}.`,
+        "success"
+      );
       onRefresh();
     } catch (err) {
       toast((err as Error).message, "error");
@@ -290,22 +301,20 @@ export function DetailPanel({
   }
 
   async function deletePermanently() {
-    if (
-      !window.confirm(
-        `Permanently delete "${opportunity.query}"? This can't be undone.`
-      )
-    )
-      return;
+    setBusy("regen"); // reuse the busy tag to lock all buttons briefly
     try {
       const res = await fetch(`/api/discoveries/${opportunity.id}`, {
         method: "DELETE"
       });
       if (!res.ok) throw new Error("Delete failed");
       toast("Opportunity deleted", "success");
+      setConfirmDelete(false);
       onDeleted?.(opportunity.id);
       onClose();
     } catch (err) {
       toast((err as Error).message, "error");
+    } finally {
+      setBusy(null);
     }
   }
 
@@ -434,31 +443,18 @@ export function DetailPanel({
           setEditing={(b) => setEditing(b ? "content" : null)}
           busy={busy === "content" || busy === "regen"}
           onGenerate={generateContent}
-          onRegenerate={regenerateContent}
+          onRegenerate={requestRegen}
           onSave={saveContent}
           onCopy={copyMarkdown}
           hasContent={contentMd.trim().length > 0}
           hasBrief={Boolean(briefDataLocal) || briefMd.trim().length > 0}
+          quality={quality}
         />
       )
-    },
-    {
-      id: "quality",
-      label: "Quality",
-      indicator: quality ? (
-        <span
-          className={cn(
-            "size-1.5 rounded-full inline-block",
-            quality.overall === "pass"
-              ? "bg-emerald-500"
-              : quality.overall === "warning"
-              ? "bg-amber-500"
-              : "bg-rose-500"
-          )}
-        />
-      ) : null,
-      render: () => <QualityTab quality={quality} />
     }
+    // Quality tab removed — checks now render as an inline strip at
+    // the top of Content when content is present. Mirrors the
+    // Analyzer draft-quality pattern for consistency.
   ];
 
   const showMoveBack =
@@ -466,6 +462,7 @@ export function DetailPanel({
     opportunity.kanbanColumn !== "rejected";
 
   return (
+    <>
     <PipelinePanel
       title={opportunity.query}
       subline={
@@ -546,9 +543,31 @@ export function DetailPanel({
       activeTabId={tab}
       onTabChange={(id) => setTab(id as Tab)}
       onMoveBack={showMoveBack ? moveBack : undefined}
-      onDelete={deletePermanently}
+      onDelete={requestDelete}
       onClose={onClose}
     />
+    <ConfirmModal
+      open={confirmRegen}
+      title="Regenerate the content?"
+      message="Regenerating overwrites the stored draft. Any manual edits you've made will be lost. The brief and quality signals are unaffected."
+      confirmLabel="Regenerate"
+      tone="warning"
+      loading={busy === "regen"}
+      onConfirm={regenerateContent}
+      onCancel={() => (busy === "regen" ? null : setConfirmRegen(false))}
+    />
+    <ConfirmModal
+      open={confirmDelete}
+      title="Delete this opportunity?"
+      message="This permanently removes the opportunity along with any brief, generated content, and quality analysis attached to it."
+      preview={opportunity.query}
+      confirmLabel="Delete permanently"
+      tone="danger"
+      loading={busy === "regen"}
+      onConfirm={deletePermanently}
+      onCancel={() => (busy === "regen" ? null : setConfirmDelete(false))}
+    />
+  </>
   );
 }
 
@@ -883,7 +902,8 @@ function ContentTab({
   onSave,
   onCopy,
   hasContent,
-  hasBrief
+  hasBrief,
+  quality
 }: {
   opportunity: Opportunity;
   contentMd: string;
@@ -897,6 +917,7 @@ function ContentTab({
   onCopy: () => void;
   hasContent: boolean;
   hasBrief: boolean;
+  quality: QualityChecks | null;
 }) {
   if (!hasBrief) {
     return (
@@ -909,10 +930,26 @@ function ContentTab({
     return (
       <div className="text-center py-12">
         <p className="text-sm text-ink-600 mb-4">
-          Content uses the per-opportunity-type LLM configured in Settings →
-          AI providers. If no key is available, you'll get a template you can
-          fill in manually.
+          Content uses the per-opportunity-type AI provider configured in
+          Settings. If no key is available, you&apos;ll get a template you
+          can fill in manually.
         </p>
+        {busy ? (
+          <div className="mb-4 text-left max-w-md mx-auto">
+            <LLMStepper
+              title="Generating a full-length article"
+              steps={[
+                "Loading the playbook + brand voice…",
+                "Studying the brief + intent…",
+                "Drafting headings + direct-answer opener…",
+                "Writing sections + FAQ + CTA placements…",
+                "Running quality checks on the draft…"
+              ]}
+              tone="brand"
+              ariaLabel="Content generation in progress"
+            />
+          </div>
+        ) : null}
         <Button variant="primary" onClick={onGenerate} disabled={busy}>
           {busy ? (
             <Loader2 className="size-3.5 animate-spin" />
@@ -927,6 +964,10 @@ function ContentTab({
 
   return (
     <div className="space-y-3">
+      {/* Quality strip — condenses the old Quality tab into a single
+          collapsible section that lives at the top of Content. Same
+          info at a glance, no extra tab. */}
+      {quality ? <ContentQualityStrip quality={quality} /> : null}
       <div className="border border-ink-200 rounded-lg">
         <div className="px-3 py-2 border-b border-ink-100 flex items-center justify-between gap-2 flex-wrap">
           <span className="text-xs font-semibold text-ink-900">Article</span>
@@ -1001,6 +1042,88 @@ function QualityTab({ quality }: { quality: QualityChecks | null }) {
       <QualityCheckRow check={quality.faqSection} />
       <QualityCheckRow check={quality.cannibalizationAvoidance} />
       <QualityCheckRow check={quality.wordCountInRange} />
+    </div>
+  );
+}
+
+// Inline strip that replaces the old Quality tab. Collapsed by default
+// with a "N/5 checks passing" summary + failure list. Click to expand
+// the full check panel. Mirrors the Analyzer draft-quality strip
+// pattern so both surfaces feel like the same feature.
+function ContentQualityStrip({ quality }: { quality: QualityChecks }) {
+  const [expanded, setExpanded] = useState(false);
+  const rows = [
+    quality.directAnswerInP1,
+    quality.comparisonTable,
+    quality.faqSection,
+    quality.cannibalizationAvoidance,
+    quality.wordCountInRange
+  ];
+  const passing = rows.filter((r) => r.status === "pass").length;
+  const failed = rows.filter((r) => r.status === "fail");
+  const overall = quality.overall;
+  const tone =
+    overall === "pass"
+      ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+      : overall === "warning"
+      ? "border-amber-200 bg-amber-50 text-amber-900"
+      : "border-rose-200 bg-rose-50 text-rose-900";
+  const Icon =
+    overall === "pass"
+      ? CheckCircle2
+      : overall === "warning"
+      ? AlertTriangle
+      : AlertCircle;
+  const iconColor =
+    overall === "pass"
+      ? "text-emerald-600"
+      : overall === "warning"
+      ? "text-amber-600"
+      : "text-rose-600";
+  return (
+    <div className={cn("rounded-lg border", tone)}>
+      <button
+        onClick={() => setExpanded((v) => !v)}
+        aria-expanded={expanded}
+        className="w-full text-left p-3 flex items-start gap-2 focus-ring rounded-lg"
+      >
+        <Icon className={cn("size-3.5 shrink-0 mt-0.5", iconColor)} aria-hidden />
+        <div className="flex-1 min-w-0">
+          <div className="flex items-baseline justify-between gap-2 flex-wrap">
+            <div className="text-xs font-semibold">
+              Content quality · {passing}/5 checks passing
+            </div>
+            <div className="text-[10px] uppercase tracking-wider opacity-70">
+              {expanded ? "Hide details" : "Show details"}
+            </div>
+          </div>
+          {failed.length > 0 && !expanded ? (
+            <div className="text-[11px] mt-1 leading-relaxed">
+              Failing:{" "}
+              {failed.map((r, i) => (
+                <span key={i}>
+                  {i > 0 ? ", " : ""}
+                  <span className="font-medium">{r.label}</span>
+                </span>
+              ))}
+            </div>
+          ) : null}
+          {failed.length === 0 && !expanded ? (
+            <div className="text-[11px] mt-1 opacity-80">
+              All quality signals look clean.
+            </div>
+          ) : null}
+        </div>
+      </button>
+      {expanded ? (
+        <div className="px-3 pb-3 space-y-2">
+          <QualityCheckRow check={quality.directAnswerInP1} />
+          <QualityCheckRow check={quality.comparisonTable} />
+          <QualityCheckRow check={quality.faqSection} />
+          <QualityCheckRow check={quality.cannibalizationAvoidance} />
+          <QualityCheckRow check={quality.wordCountInRange} />
+        </div>
+      ) : null}
     </div>
   );
 }

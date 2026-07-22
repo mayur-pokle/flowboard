@@ -144,7 +144,7 @@ async function maybeMigrateLegacyLocalStorage() {
         const c = data.counts || {};
         const summary = [
           c.topics ? `${c.topics} ideas` : null,
-          c.tasks ? `${c.tasks} kanban cards` : null,
+          c.tasks ? `${c.tasks} pipeline cards` : null,
           c.competitors ? `${c.competitors} competitors` : null,
           c.settings ? "brand settings" : null
         ]

@@ -56,7 +56,7 @@ export function PublishPromptCard({
               <h3 className="text-base font-semibold text-ink-900">
                 Publish to Webflow
               </h3>
-              <Badge tone="info">via Claude MCP</Badge>
+              <Badge tone="info">via Claude Desktop</Badge>
             </div>
             <p className="text-xs text-ink-700 leading-relaxed">
               Copy the prompt below and paste it into{" "}

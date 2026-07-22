@@ -20,8 +20,16 @@ import {
   type PanelTab
 } from "@/components/pipeline/PipelinePanel";
 import { renderMarkdown } from "@/lib/markdown-mini";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
+import { LLMStepper } from "@/components/ui/LLMStepper";
+import { ConfidenceTag } from "@/components/ui/ConfidenceTag";
 import { cn } from "@/lib/utils";
-import type { AnalyzedTopic } from "./types";
+import {
+  COLUMN_LABEL,
+  COLUMN_ORDER,
+  type AnalyzedTopic,
+  type AnalyzerColumn
+} from "./types";
 
 interface Props {
   topic: AnalyzedTopic;
@@ -37,7 +45,7 @@ export function AnalyzerDetailPanel({
   onDeleted
 }: Props) {
   const [tab, setTab] = useState<
-    "overview" | "brief" | "draft" | "enrichment" | "actions"
+    "overview" | "brief" | "draft" | "enrichment"
   >("overview");
   const [enriching, setEnriching] = useState(false);
   const [promoting, setPromoting] = useState<
@@ -58,7 +66,7 @@ export function AnalyzerDetailPanel({
       if (!res.ok) throw new Error(json.error || "Enrichment failed");
       if (json.enrichment?.provider === "unavailable") {
         toast(
-          "No LLM key configured — set GEMINI_API_KEY / OPENAI_API_KEY in env to enrich.",
+          "No AI provider configured. Add a key in Settings to enable enrichment.",
           "info"
         );
       } else {
@@ -88,12 +96,12 @@ export function AnalyzerDetailPanel({
       if (!res.ok) throw new Error(json.error || "Promotion failed");
       if (json.alreadyPromoted) {
         toast(
-          `Already promoted to ${destination === "discovery" ? "AI Discovery" : "AI Resources"}.`,
+          `Already promoted to ${destination === "discovery" ? "Opportunities" : "Content"}.`,
           "info"
         );
       } else {
         toast(
-          `Promoted to ${destination === "discovery" ? "AI Discovery — Intake" : "AI Resources — Ideas"}.`,
+          `Promoted to ${destination === "discovery" ? "Opportunities — Intake" : "Content — Ideas"}.`,
           "success"
         );
       }
@@ -105,18 +113,29 @@ export function AnalyzerDetailPanel({
     }
   }
 
-  async function deleteTopic() {
-    if (!window.confirm(`Delete "${topic.title}"? This can't be undone.`)) return;
+  // Delete flow uses ConfirmModal instead of window.confirm — modal
+  // provides focus trap, escape handling, and loading state during the
+  // DELETE round-trip.
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  function requestDelete() {
+    setConfirmDeleteOpen(true);
+  }
+  async function performDelete() {
+    setDeleting(true);
     try {
       const res = await fetch(`/api/analyzer/${topic.id}`, {
         method: "DELETE"
       });
       if (!res.ok) throw new Error("Delete failed");
       onDeleted(topic.id);
+      setConfirmDeleteOpen(false);
       onClose();
       toast("Topic deleted", "info");
     } catch (err) {
       toast((err as Error).message, "error");
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -176,14 +195,14 @@ export function AnalyzerDetailPanel({
     }
     if (topic.promotedToDiscoveryId) {
       out.push({
-        label: "→ AI Discovery",
+        label: "→ Opportunities",
         className:
           "bg-brand-50 text-brand-700 ring-1 ring-inset ring-brand-200"
       });
     }
     if (topic.promotedToTaskId) {
       out.push({
-        label: "→ AI Resources",
+        label: "→ Content",
         className:
           "bg-brand-50 text-brand-700 ring-1 ring-inset ring-brand-200"
       });
@@ -313,12 +332,10 @@ export function AnalyzerDetailPanel({
           <CheckCircle2 className="size-3 text-emerald-500" />
         ) : null,
       render: () => renderEnrichment()
-    },
-    {
-      id: "actions",
-      label: "Actions",
-      render: () => renderActions()
     }
+    // Actions tab removed — promote buttons now live inline on the
+    // Overview verdict banner, and column-move lives in the header
+    // dropdown (rendered separately below via `columnMenu`).
   ];
 
   function renderOverview() {
@@ -406,6 +423,42 @@ export function AnalyzerDetailPanel({
 
     return (
       <div className="space-y-4">
+        {/* Column-picker chip — replaces the old Actions tab's "Move on
+            the Kanban" section. Sits at the top so column change is
+            always one click away, no matter which tab is active later
+            (the chip is Overview-only for now, but it's the most-used
+            tab; can promote to the header later). */}
+        <div className="flex items-center gap-2 flex-wrap text-[11px]">
+          <span className="uppercase tracking-wider text-ink-500">
+            Column
+          </span>
+          <div className="inline-flex items-center gap-1 rounded-md bg-ink-100 p-0.5">
+            {COLUMN_ORDER.map((c) => {
+              const isActive = topic.kanbanColumn === c;
+              const isLoading = movingColumn === c;
+              return (
+                <button
+                  key={c}
+                  onClick={() => moveColumn(c)}
+                  disabled={movingColumn !== null}
+                  aria-current={isActive ? "true" : undefined}
+                  className={cn(
+                    "h-6 px-2 rounded text-[11px] font-medium transition inline-flex items-center gap-1 focus-ring disabled:opacity-60",
+                    isActive
+                      ? "bg-white text-ink-900 shadow-sm"
+                      : "text-ink-600 hover:text-ink-900"
+                  )}
+                >
+                  {isLoading ? (
+                    <Loader2 className="size-3 animate-spin" />
+                  ) : null}
+                  {COLUMN_LABEL[c]}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         {/* Recommendation banner */}
         <div className={cn("rounded-lg border p-3", recTone.wrap)}>
           <div className="flex items-start gap-2">
@@ -438,8 +491,8 @@ export function AnalyzerDetailPanel({
                       <ArrowUpRight className="size-3" />
                     )}
                     {topic.promotedToDiscoveryId
-                      ? "In AI Discovery"
-                      : "Send to AI Discovery"}
+                      ? "In Opportunities"
+                      : "Send to Opportunities"}
                   </button>
                   <button
                     onClick={() => promote("resources")}
@@ -455,8 +508,8 @@ export function AnalyzerDetailPanel({
                       <ArrowUpRight className="size-3" />
                     )}
                     {topic.promotedToTaskId
-                      ? "In AI Resources"
-                      : "Send to AI Resources"}
+                      ? "In Content"
+                      : "Send to Content"}
                   </button>
                 </div>
               ) : null}
@@ -592,12 +645,12 @@ export function AnalyzerDetailPanel({
               article links are labeled so the strategist verifies. */}
           {enrichment?.articleLinks && enrichment.articleLinks.length > 0 ? (
             <div className="rounded-md border border-brand-200 bg-brand-50/40 p-3 mb-2">
-              <div className="text-[11px] font-semibold text-brand-900 mb-2 inline-flex items-center gap-1">
-                <Sparkles className="size-3" />
-                Articles covering this topic
-                <span className="ml-1 text-[10px] text-brand-700 font-normal">
-                  (AI-suggested · verify before citing)
-                </span>
+              <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+                <div className="text-[11px] font-semibold text-brand-900 inline-flex items-center gap-1">
+                  <Sparkles className="size-3" aria-hidden />
+                  Articles covering this topic
+                </div>
+                <ConfidenceTag level="ai-suggested" />
               </div>
               <ul className="space-y-1.5">
                 {enrichment.articleLinks.slice(0, 8).map((a, i) => (
@@ -626,10 +679,13 @@ export function AnalyzerDetailPanel({
 
           {analysis.competitorCoverage.candidateLinks.length > 0 ? (
             <div>
-              <div className="text-[10px] uppercase tracking-wider text-ink-500 mb-1.5 font-semibold">
-                {enrichment?.articleLinks && enrichment.articleLinks.length > 0
-                  ? "More — search competitor sites"
-                  : "Search competitor sites for this topic"}
+              <div className="flex items-center justify-between gap-2 mb-1.5 flex-wrap">
+                <div className="text-[10px] uppercase tracking-wider text-ink-500 font-semibold">
+                  {enrichment?.articleLinks && enrichment.articleLinks.length > 0
+                    ? "More — search competitor sites"
+                    : "Search competitor sites for this topic"}
+                </div>
+                <ConfidenceTag level="verified" label="Search URLs" />
               </div>
               <ul className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
                 {analysis.competitorCoverage.candidateLinks
@@ -824,6 +880,22 @@ export function AnalyzerDetailPanel({
             alternate headlines, competitor gap read, community signals,
             and AI citation insights.
           </p>
+          {enriching ? (
+            <div className="mb-3 text-left">
+              <LLMStepper
+                title="Enriching this topic with Gemini"
+                steps={[
+                  "Sharpening the target keyword…",
+                  "Searching for competitor articles on this topic…",
+                  "Reading community + AI-engine phrasings…",
+                  "Extracting citation-worthy angles…",
+                  "Composing the enrichment payload…"
+                ]}
+                tone="violet"
+                ariaLabel="Enrichment in progress"
+              />
+            </div>
+          ) : null}
           <Button
             variant="primary"
             onClick={runEnrichment}
@@ -843,11 +915,17 @@ export function AnalyzerDetailPanel({
       return (
         <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
           <div className="font-semibold mb-1">
-            No LLM provider available
+            No AI provider available
           </div>
           <p>
-            Set <code>GEMINI_API_KEY</code>, <code>OPENAI_API_KEY</code>,
-            or <code>ANTHROPIC_API_KEY</code> in Vercel env and retry.
+            Connect Gemini, OpenAI, or Anthropic in{" "}
+            <a
+              href="/settings/api"
+              className="underline font-medium hover:text-amber-950"
+            >
+              Settings
+            </a>
+            {" "}and try again.
           </p>
           <div className="mt-3">
             <Button
@@ -908,9 +986,12 @@ export function AnalyzerDetailPanel({
 
         {enrichment.articleLinks && enrichment.articleLinks.length > 0 ? (
           <Section title="Articles covering this topic">
-            <div className="text-[10px] text-ink-500 mb-2">
-              AI-suggested — verify each link before citing. Sourced
-              from Gemini&apos;s knowledge, not a live crawl.
+            <div className="flex items-center gap-2 mb-2 flex-wrap">
+              <ConfidenceTag level="ai-suggested" />
+              <span className="text-[10px] text-ink-500">
+                Sourced from Gemini&apos;s training knowledge, not a live
+                crawl. Verify each link before citing.
+              </span>
             </div>
             <ul className="space-y-1.5">
               {enrichment.articleLinks.slice(0, 8).map((a, i) => (
@@ -968,96 +1049,32 @@ export function AnalyzerDetailPanel({
     );
   }
 
-  function renderActions() {
-    return (
-      <div className="space-y-4">
-        <div className="rounded-md border border-ink-200 p-3">
-          <div className="text-xs font-semibold text-ink-900 mb-1">
-            Promote to a working surface
-          </div>
-          <p className="text-[11px] text-ink-600 mb-3">
-            Send this analyzed topic to AI Discovery (Intake column) or
-            AI Resources (Ideas column) once you're ready to commit
-            production time.
-          </p>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant="primary"
-              onClick={() => promote("discovery")}
-              disabled={!canPromote || promoting !== null}
-              loading={promoting === "discovery"}
-            >
-              <ArrowUpRight className="size-3.5" />
-              Send to AI Discovery
-            </Button>
-            <Button
-              variant="secondary"
-              onClick={() => promote("resources")}
-              disabled={!canPromote || promoting !== null}
-              loading={promoting === "resources"}
-            >
-              <ArrowUpRight className="size-3.5" />
-              Send to AI Resources
-            </Button>
-          </div>
-          {topic.promotedToDiscoveryId ? (
-            <div className="text-[11px] text-emerald-700 mt-2 inline-flex items-center gap-1">
-              <CheckCircle2 className="size-3" />
-              Already in AI Discovery — Intake.
-            </div>
-          ) : null}
-          {topic.promotedToTaskId ? (
-            <div className="text-[11px] text-emerald-700 mt-2 inline-flex items-center gap-1">
-              <CheckCircle2 className="size-3" />
-              Already in AI Resources — Ideas.
-            </div>
-          ) : null}
-        </div>
-
-        <div className="rounded-md border border-ink-200 p-3">
-          <div className="text-xs font-semibold text-ink-900 mb-1">
-            Move on the Kanban
-          </div>
-          <p className="text-[11px] text-ink-600 mb-3">
-            Change the column this topic sits in.
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {(["draft", "analyzed", "approved", "archived"] as const).map(
-              (c) => (
-                <button
-                  key={c}
-                  onClick={async () => {
-                    try {
-                      const res = await fetch(`/api/analyzer/${topic.id}`, {
-                        method: "PATCH",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ kanbanColumn: c })
-                      });
-                      if (!res.ok) throw new Error("Move failed");
-                      toast(`Moved to ${c}`, "success");
-                      onRefresh();
-                    } catch (err) {
-                      toast((err as Error).message, "error");
-                    }
-                  }}
-                  className={cn(
-                    "h-7 px-2 rounded-md text-xs font-medium transition ring-1 ring-inset",
-                    topic.kanbanColumn === c
-                      ? "bg-ink-900 text-white ring-ink-900"
-                      : "bg-white text-ink-700 ring-ink-200 hover:bg-ink-50"
-                  )}
-                >
-                  {c}
-                </button>
-              )
-            )}
-          </div>
-        </div>
-      </div>
-    );
+  // Column-move helper — used by the header dropdown. Replaces the old
+  // Actions tab. Firing a PATCH updates the row; parent refreshes.
+  const [movingColumn, setMovingColumn] = useState<AnalyzerColumn | null>(
+    null
+  );
+  async function moveColumn(next: AnalyzerColumn) {
+    if (next === topic.kanbanColumn) return;
+    setMovingColumn(next);
+    try {
+      const res = await fetch(`/api/analyzer/${topic.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kanbanColumn: next })
+      });
+      if (!res.ok) throw new Error("Move failed");
+      toast(`Moved to ${COLUMN_LABEL[next]}`, "success");
+      onRefresh();
+    } catch (err) {
+      toast((err as Error).message, "error");
+    } finally {
+      setMovingColumn(null);
+    }
   }
 
   return (
+    <>
     <PipelinePanel
       title={topic.title}
       subline={
@@ -1072,12 +1089,24 @@ export function AnalyzerDetailPanel({
       activeTabId={tab}
       onTabChange={(id) =>
         setTab(
-          id as "overview" | "brief" | "draft" | "enrichment" | "actions"
+          id as "overview" | "brief" | "draft" | "enrichment"
         )
       }
-      onDelete={deleteTopic}
+      onDelete={requestDelete}
       onClose={onClose}
     />
+    <ConfirmModal
+      open={confirmDeleteOpen}
+      title="Delete this topic?"
+      message="This will permanently remove the analysis, brief, any enrichment, and draft body attached to this topic. Promoted copies in Opportunities or Content are not affected."
+      preview={topic.title}
+      confirmLabel="Delete permanently"
+      tone="danger"
+      loading={deleting}
+      onConfirm={performDelete}
+      onCancel={() => (deleting ? null : setConfirmDeleteOpen(false))}
+    />
+  </>
   );
 }
 

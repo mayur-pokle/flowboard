@@ -13,18 +13,38 @@ import {
 import { cn } from "@/lib/utils";
 import { useStore, useHasHydrated } from "@/lib/store";
 
-// AEO/GEO Agent (was "AI Discovery") is the demand-capture surface —
-// Gemini identifies content gaps competitors are getting cited for.
-// AI Resources holds the full content production funnel — generation
-// in the Ideas column, then triage / production / done. Topic Analyzer
-// is the intake-triage workbench where the strategist analyses
-// individual candidates before pushing to either of the other
-// surfaces. All three share the same kanban chassis.
+// Sidebar labels use plain English — no jargon, no acronyms. The
+// three primary surfaces map to the strategist's mental workflow:
+//   Opportunities = where new ideas come from (GSC + AI crawl)
+//   Analyzer      = triage / topic quality check on individual candidates
+//   Content       = production pipeline where drafts are written + shipped
+// Route paths are preserved so external Slack digest links + bookmarks
+// don't break.
 const items = [
-  { href: "/discovery", label: "AEO/GEO Agent", icon: Telescope },
-  { href: "/board", label: "AI Resources", icon: Layers },
-  { href: "/analyzer", label: "Topic Analyzer", icon: Microscope },
-  { href: "/settings/api", label: "Settings", icon: Settings }
+  {
+    href: "/discovery",
+    label: "Opportunities",
+    icon: Telescope,
+    hint: "Find new content gaps"
+  },
+  {
+    href: "/analyzer",
+    label: "Analyzer",
+    icon: Microscope,
+    hint: "Triage individual topics"
+  },
+  {
+    href: "/board",
+    label: "Content",
+    icon: Layers,
+    hint: "Draft, review, ship"
+  },
+  {
+    href: "/settings/api",
+    label: "Settings",
+    icon: Settings,
+    hint: "Workspace configuration"
+  }
 ];
 
 export function Sidebar() {
@@ -55,14 +75,17 @@ export function Sidebar() {
         </Link>
       </div>
 
-      <nav className="px-2 py-3 flex-1 overflow-y-auto scrollbar-thin">
+      <nav
+        className="px-2 py-3 flex-1 overflow-y-auto scrollbar-thin"
+        aria-label="Primary navigation"
+      >
         {items.map((item) => {
           const active =
             pathname === item.href ||
             (item.href !== "/" && pathname?.startsWith(item.href));
           const Icon = item.icon;
-          // Content Pipeline badge counts BOTH unreviewed ideas and
-          // tasks on the board — that's the funnel size at a glance.
+          // Content badge counts BOTH unreviewed ideas and tasks on
+          // the board — that's the funnel size at a glance.
           const badge =
             hydrated && item.href === "/board"
               ? topicCount + taskCount
@@ -71,17 +94,22 @@ export function Sidebar() {
             <Link
               key={item.href}
               href={item.href}
+              aria-current={active ? "page" : undefined}
+              title={item.hint}
               className={cn(
-                "flex items-center gap-3 rounded-md px-3 py-2 text-base transition",
+                "flex items-center gap-3 rounded-md px-3 py-2 text-base transition focus-ring",
                 active
                   ? "bg-brand-50 text-brand-700"
                   : "text-ink-700 hover:bg-ink-100"
               )}
             >
-              <Icon className="size-4" />
+              <Icon className="size-4" aria-hidden />
               <span className="flex-1">{item.label}</span>
               {badge !== null && badge > 0 ? (
-                <span className="text-xs tabular-nums bg-ink-100 text-ink-700 rounded-full px-2 py-1">
+                <span
+                  className="text-xs tabular-nums bg-ink-100 text-ink-700 rounded-full px-2 py-1"
+                  aria-label={`${badge} items`}
+                >
                   {badge}
                 </span>
               ) : null}
@@ -99,7 +127,7 @@ export function Sidebar() {
             <div className="flex-1 min-w-0">
               <div className="text-[12px] text-ink-800 truncate">{email}</div>
               <div className="text-xs text-ink-500">
-                {taskCount} on board · {topicCount} ideas
+                {taskCount} in pipeline · {topicCount} opportunities
               </div>
             </div>
             <button

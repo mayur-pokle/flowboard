@@ -23,9 +23,12 @@ export function ToastHost() {
     pushExternal = (t) => {
       const id = Math.random().toString(36).slice(2);
       setItems((s) => [...s, { ...t, id }]);
+      // Errors linger longer than success/info — users need time to
+      // read what went wrong. Success/info toasts still clear at 3.5s.
+      const dwell = t.tone === "error" ? 7000 : 3500;
       setTimeout(() => {
         setItems((s) => s.filter((x) => x.id !== id));
-      }, 3500);
+      }, dwell);
     };
     return () => {
       pushExternal = null;
@@ -33,10 +36,20 @@ export function ToastHost() {
   }, []);
 
   return (
-    <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2 w-80">
+    // aria-live=polite lets screen readers announce toast content
+    // without interrupting current speech. Errors use assertive on the
+    // per-toast wrapper below so they cut through.
+    <div
+      className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2 w-80"
+      aria-live="polite"
+      aria-atomic="false"
+      role="status"
+    >
       {items.map((t) => (
         <div
           key={t.id}
+          role={t.tone === "error" ? "alert" : "status"}
+          aria-live={t.tone === "error" ? "assertive" : "polite"}
           className={cn(
             "flex items-start gap-2 rounded-lg border bg-white px-3 py-3 shadow-cardHover text-base",
             t.tone === "success" && "border-emerald-200",

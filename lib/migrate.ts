@@ -188,6 +188,7 @@ const STATEMENTS: string[] = [
     "updatedAt" timestamp DEFAULT now() NOT NULL,
     "createdByUserId" text
   )`,
+  `ALTER TABLE "analyzedTopics" ADD COLUMN IF NOT EXISTS "postBody" text`,
   // ── Demand-capture pipeline columns ──
   `ALTER TABLE "discoveredOpportunities" ADD COLUMN IF NOT EXISTS "kanbanColumn" text NOT NULL DEFAULT 'intake'`,
   `ALTER TABLE "discoveredOpportunities" ADD COLUMN IF NOT EXISTS "opportunityType" text NOT NULL DEFAULT 'new'`,

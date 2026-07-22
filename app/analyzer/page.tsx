@@ -44,6 +44,7 @@ export default function TopicAnalyzerPage() {
   const [title, setTitle] = useState("");
   const [targetKeyword, setTargetKeyword] = useState("");
   const [notes, setNotes] = useState("");
+  const [postBody, setPostBody] = useState("");
   const [analyzing, setAnalyzing] = useState(false);
   const [lastAnalyzedId, setLastAnalyzedId] = useState<string | null>(null);
 
@@ -81,7 +82,8 @@ export default function TopicAnalyzerPage() {
         body: JSON.stringify({
           title: title.trim(),
           targetKeyword: targetKeyword.trim() || undefined,
-          notes: notes.trim() || undefined
+          notes: notes.trim() || undefined,
+          postBody: postBody.trim() || undefined
         })
       });
       const json = await res.json();
@@ -94,6 +96,7 @@ export default function TopicAnalyzerPage() {
       setTitle("");
       setTargetKeyword("");
       setNotes("");
+      setPostBody("");
       // Auto-open the panel so the strategist sees the report
       setOpenId(newTopic.id);
     } catch (err) {
@@ -156,6 +159,8 @@ export default function TopicAnalyzerPage() {
           setTargetKeyword={setTargetKeyword}
           notes={notes}
           setNotes={setNotes}
+          postBody={postBody}
+          setPostBody={setPostBody}
           analyzing={analyzing}
           onAnalyze={handleAnalyze}
           lastAnalyzed={lastAnalyzed}
@@ -196,6 +201,8 @@ function AnalyzeTab({
   setTargetKeyword,
   notes,
   setNotes,
+  postBody,
+  setPostBody,
   analyzing,
   onAnalyze,
   lastAnalyzed,
@@ -209,6 +216,8 @@ function AnalyzeTab({
   setTargetKeyword: (v: string) => void;
   notes: string;
   setNotes: (v: string) => void;
+  postBody: string;
+  setPostBody: (v: string) => void;
   analyzing: boolean;
   onAnalyze: () => void;
   lastAnalyzed: AnalyzedTopic | null;
@@ -216,6 +225,11 @@ function AnalyzeTab({
   onGoToBucket: () => void;
   totalCount: number;
 }) {
+  // Word count preview — helps the strategist eyeball whether the
+  // draft is close to the target range before submitting.
+  const draftWordCount = postBody
+    ? postBody.trim().split(/\s+/).filter(Boolean).length
+    : 0;
   return (
     <div className="flex-1 min-h-0 overflow-auto scrollbar-thin px-6 py-6">
       <div className="max-w-3xl mx-auto space-y-6">
@@ -283,6 +297,36 @@ function AnalyzeTab({
             disabled={analyzing}
             maxLength={2000}
           />
+
+          <div className="flex items-baseline justify-between mb-1">
+            <label className="text-xs font-medium text-ink-800 block">
+              Post body{" "}
+              <span className="text-ink-400 font-normal">
+                (optional — paste your draft to also run quality checks)
+              </span>
+            </label>
+            {postBody ? (
+              <span className="text-[10px] text-ink-500 tabular-nums">
+                {draftWordCount.toLocaleString()} words
+              </span>
+            ) : null}
+          </div>
+          <textarea
+            value={postBody}
+            onChange={(e) => setPostBody(e.target.value)}
+            placeholder="# The article title&#10;&#10;First paragraph goes here — direct answer to the topic, ideally 40–80 words containing the target keyword…&#10;&#10;## First H2&#10;&#10;..."
+            rows={10}
+            className="input mb-4 !text-xs font-mono leading-relaxed min-h-[220px]"
+            disabled={analyzing}
+            maxLength={60000}
+          />
+          <p className="text-[11px] text-ink-500 mb-4 leading-relaxed">
+            When you paste a draft, the analyzer also runs quality checks
+            — direct-answer opening, comparison table, FAQ section,
+            cannibalization against your library, and word count vs. the
+            playbook&apos;s target range. Draft failures downgrade the
+            recommendation so you don&apos;t ship broken copy.
+          </p>
 
           <div className="flex items-center gap-2 flex-wrap">
             <Button

@@ -30,6 +30,7 @@ export const GET = withAuth(async () => {
         title: r.title,
         targetKeyword: r.targetKeyword,
         notes: r.notes,
+        postBody: r.postBody,
         kanbanColumn: r.kanbanColumn,
         analysis: r.analysis,
         enrichment: r.enrichment,
@@ -65,6 +66,11 @@ export const POST = withAuth(async (user, req) => {
         : undefined;
     const notes =
       typeof body.notes === "string" ? body.notes.trim().slice(0, 2000) : undefined;
+    // Optional draft body — capped at 60KB to keep the analyzer bounded.
+    const postBody =
+      typeof body.postBody === "string" && body.postBody.trim()
+        ? body.postBody.trim().slice(0, 60000)
+        : undefined;
 
     // Pull workspace context for the analyzer.
     const [brandRow] = await db
@@ -79,6 +85,7 @@ export const POST = withAuth(async (user, req) => {
       title,
       targetKeyword,
       notes,
+      postBody,
       brand: {
         companyName: brandRow?.companyName || undefined,
         brandNiche: brandRow?.brandNiche || undefined,
@@ -107,6 +114,7 @@ export const POST = withAuth(async (user, req) => {
       title,
       targetKeyword: targetKeyword || null,
       notes: notes || null,
+      postBody: postBody || null,
       // Land in "analyzed" — the deterministic pipeline is done. "draft"
       // was the pre-submit state; by the time this row exists the
       // analysis payload is already attached.
@@ -125,6 +133,7 @@ export const POST = withAuth(async (user, req) => {
         title,
         targetKeyword: targetKeyword || null,
         notes: notes || null,
+        postBody: postBody || null,
         kanbanColumn: "analyzed",
         analysis,
         enrichment: null,

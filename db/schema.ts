@@ -424,6 +424,11 @@ export const analyzedTopics = pgTable("analyzedTopics", {
   // Optional free-text notes from the strategist explaining the angle
   // or why they're considering the topic.
   notes: text("notes"),
+  // Optional draft body markdown. When present, the analyzer also
+  // runs content-quality checks (direct answer, comparison table,
+  // FAQ section, word count, cannibalization mention) against the
+  // draft so the strategist can vet copy + topic in one pass.
+  postBody: text("postBody"),
   // Column on the analyzer Kanban.
   //   "draft"     → submitted, analysis pending / in-flight
   //   "analyzed"  → analysis returned, awaiting strategist decision

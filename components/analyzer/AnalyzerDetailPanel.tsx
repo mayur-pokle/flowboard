@@ -36,7 +36,7 @@ export function AnalyzerDetailPanel({
   onDeleted
 }: Props) {
   const [tab, setTab] = useState<
-    "overview" | "brief" | "enrichment" | "actions"
+    "overview" | "brief" | "draft" | "enrichment" | "actions"
   >("overview");
   const [enriching, setEnriching] = useState(false);
   const [promoting, setPromoting] = useState<
@@ -234,6 +234,20 @@ export function AnalyzerDetailPanel({
       }
     : null;
 
+  // Draft tab only appears when a post body was submitted. Its status
+  // dot mirrors the overall quality check verdict — green pass, amber
+  // warning, red fail — so the strategist sees the state before
+  // opening the tab.
+  const hasDraft = Boolean(topic.postBody && topic.postBody.trim());
+  const draftQuality = analysis?.draftQuality ?? null;
+  const draftDotColor = draftQuality
+    ? draftQuality.checks.overall === "pass"
+      ? "bg-emerald-500"
+      : draftQuality.checks.overall === "warning"
+      ? "bg-amber-500"
+      : "bg-rose-500"
+    : null;
+
   const tabs: PanelTab[] = [
     {
       id: "overview",
@@ -248,6 +262,23 @@ export function AnalyzerDetailPanel({
       ) : null,
       render: () => renderBrief()
     },
+    ...(hasDraft
+      ? [
+          {
+            id: "draft",
+            label: "Draft",
+            indicator: draftDotColor ? (
+              <span
+                className={cn(
+                  "size-1.5 rounded-full inline-block",
+                  draftDotColor
+                )}
+              />
+            ) : null,
+            render: () => renderDraft()
+          } as PanelTab
+        ]
+      : []),
     {
       id: "enrichment",
       label: "Enrichment",
@@ -528,6 +559,66 @@ export function AnalyzerDetailPanel({
           __html: renderMarkdown(analysis.briefMarkdown || "")
         }}
       />
+    );
+  }
+
+  function renderDraft() {
+    if (!topic.postBody || !draftQuality) {
+      return (
+        <div className="text-sm text-ink-500 py-8 text-center">
+          No draft submitted with this topic.
+        </div>
+      );
+    }
+    const overall = draftQuality.checks.overall;
+    const overallTone =
+      overall === "pass"
+        ? "bg-emerald-50 border-emerald-200 text-emerald-900"
+        : overall === "warning"
+        ? "bg-amber-50 border-amber-200 text-amber-900"
+        : "bg-rose-50 border-rose-200 text-rose-900";
+    return (
+      <div className="space-y-4">
+        {/* Overall verdict */}
+        <div className={cn("rounded-lg border p-3", overallTone)}>
+          <div className="text-xs font-semibold uppercase tracking-wider mb-1">
+            Draft check · {overall}
+          </div>
+          <p className="text-xs leading-relaxed">{draftQuality.summary}</p>
+        </div>
+
+        {/* Individual checks */}
+        <Section title="Quality signals">
+          <ul className="space-y-2">
+            <QualityRow check={draftQuality.checks.directAnswerInP1} />
+            <QualityRow check={draftQuality.checks.comparisonTable} />
+            <QualityRow check={draftQuality.checks.faqSection} />
+            <QualityRow check={draftQuality.checks.cannibalizationAvoidance} />
+            <QualityRow check={draftQuality.checks.wordCountInRange} />
+          </ul>
+        </Section>
+
+        {/* H2 outline */}
+        {draftQuality.h2Outline.length > 0 ? (
+          <Section title="Draft outline">
+            <ol className="text-xs space-y-1 list-decimal ml-4 text-ink-700">
+              {draftQuality.h2Outline.map((h, i) => (
+                <li key={i}>{h}</li>
+              ))}
+            </ol>
+          </Section>
+        ) : null}
+
+        {/* Body preview */}
+        <Section title="Draft preview">
+          <div
+            className="prose prose-sm max-w-none text-ink-800 border border-ink-200 rounded-md p-3 bg-ink-50/40 max-h-[420px] overflow-auto scrollbar-thin"
+            dangerouslySetInnerHTML={{
+              __html: renderMarkdown(topic.postBody)
+            }}
+          />
+        </Section>
+      </div>
     );
   }
 
@@ -813,5 +904,36 @@ function Section({
       </h3>
       {children}
     </div>
+  );
+}
+
+// Renders one row of the draft quality check panel. Same pattern as
+// the Discovery panel's QualityCheckRow, kept local so the analyzer
+// doesn't reach into another surface's components.
+function QualityRow({
+  check
+}: {
+  check: {
+    status: "pass" | "warning" | "fail";
+    label: string;
+    detail?: string;
+  };
+}) {
+  return (
+    <li className="border border-ink-200 rounded-md p-2 flex items-start gap-2">
+      {check.status === "pass" ? (
+        <CheckCircle2 className="size-4 text-emerald-500 shrink-0 mt-0.5" />
+      ) : check.status === "warning" ? (
+        <AlertTriangle className="size-4 text-amber-500 shrink-0 mt-0.5" />
+      ) : (
+        <AlertCircle className="size-4 text-rose-500 shrink-0 mt-0.5" />
+      )}
+      <div className="flex-1 min-w-0">
+        <div className="text-xs font-medium text-ink-900">{check.label}</div>
+        {check.detail ? (
+          <div className="text-[11px] text-ink-600 mt-0.5">{check.detail}</div>
+        ) : null}
+      </div>
+    </li>
   );
 }

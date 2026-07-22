@@ -33,6 +33,10 @@ import {
   renderBriefAsMarkdown,
   type BriefData
 } from "@/lib/brief-generator";
+import {
+  runQualityChecks,
+  type QualityChecks
+} from "@/lib/content-quality";
 
 // ── Input + Output types ─────────────────────────────────────────────
 
@@ -40,6 +44,10 @@ export interface AnalyzeInput {
   title: string;
   targetKeyword?: string;
   notes?: string;
+  // Optional draft body markdown. When present, the analyzer runs
+  // the content-quality checks against it so the strategist can vet
+  // copy + topic together in one pass.
+  postBody?: string;
   // Workspace context — the strategist doesn't retype this, we pull
   // from settings at the call site.
   brand: {
@@ -123,6 +131,19 @@ export interface AnalysisResult {
 
   // ── Alternate headlines ──
   alternateHeadlines: string[];
+
+  // ── Draft quality (only when postBody was provided) ──
+  // Mirrors the checks Discovery runs on generated content so a
+  // human-written draft is held to the same bar. When postBody is
+  // absent, this is null.
+  draftQuality?: {
+    checks: QualityChecks;
+    // Short human-readable summary of what needs fixing (or "clean").
+    summary: string;
+    // Content-body H2s extracted from the draft, if any — useful for
+    // eyeballing the structure at a glance.
+    h2Outline: string[];
+  } | null;
 
   // ── Recommendation ──
   recommendation: {
@@ -548,9 +569,63 @@ export function analyzeTopic(input: AnalyzeInput): AnalysisResult {
     targetKeyword,
     playbook
   );
+  // ── Draft quality (only when postBody is provided) ──
+  // Runs the SAME quality checks the content generator runs on
+  // generated articles, so a human-written draft is held to the same
+  // bar. Extracts an H2 outline from the draft for at-a-glance review.
+  let draftQuality: AnalysisResult["draftQuality"] = null;
+  if (input.postBody && input.postBody.trim().length > 50) {
+    const checks = runQualityChecks({
+      markdown: input.postBody,
+      targetKeyword,
+      intent: classified.intent,
+      wordCountMin: brief.wordCountMin,
+      wordCountMax: brief.wordCountMax,
+      cannibalizingPages: cannibalization.matches.map((m) => ({
+        url: m.url,
+        title: m.title
+      }))
+    });
+    const failed: string[] = [];
+    if (checks.directAnswerInP1.status === "fail")
+      failed.push("direct-answer opening");
+    if (checks.comparisonTable.status === "fail")
+      failed.push("comparison table");
+    if (checks.faqSection.status === "fail") failed.push("FAQ section");
+    if (checks.cannibalizationAvoidance.status === "fail")
+      failed.push("cannibalization avoidance");
+    if (checks.wordCountInRange.status === "fail")
+      failed.push("word count");
+    const summary =
+      checks.overall === "pass"
+        ? "Draft clears every check — ready for review."
+        : checks.overall === "warning"
+        ? "Draft passes but has soft flags — tighten before publishing."
+        : `Draft fails ${failed.length} check${failed.length === 1 ? "" : "s"}: ${failed.join(", ")}. Fix before publishing.`;
+
+    // Pull H2 headings so the strategist can eyeball structure.
+    const h2Outline: string[] = [];
+    for (const line of input.postBody.split("\n")) {
+      const m = line.match(/^##\s+(.+)$/);
+      if (m) h2Outline.push(m[1].trim());
+      if (h2Outline.length >= 15) break;
+    }
+
+    draftQuality = { checks, summary, h2Outline };
+  }
+
+  // Recommendation factors in draft quality when present — a failing
+  // draft downgrades a topic that would otherwise proceed.
+  const draftHasFailures =
+    draftQuality?.checks.overall === "fail";
   const recommendation = buildRecommendation(
     classified.totalScore,
-    cannibalization.verdict,
+    // Treat a failing draft as functionally equivalent to a "review"
+    // signal so the recommendation doesn't cheerfully say "proceed"
+    // on broken copy.
+    draftHasFailures && cannibalization.verdict === "clear"
+      ? "review"
+      : cannibalization.verdict,
     classified.aiCitationGap
   );
 
@@ -572,6 +647,7 @@ export function analyzeTopic(input: AnalyzeInput): AnalysisResult {
     briefMarkdown,
     aeoAngle,
     alternateHeadlines,
+    draftQuality,
     recommendation,
     generatedAt: new Date().toISOString()
   };

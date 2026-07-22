@@ -27,6 +27,7 @@ export const GET = withAuth(
           title: row.title,
           targetKeyword: row.targetKeyword,
           notes: row.notes,
+          postBody: row.postBody,
           kanbanColumn: row.kanbanColumn,
           analysis: row.analysis,
           enrichment: row.enrichment,
@@ -57,6 +58,10 @@ export const PATCH = withAuth(
       }
       if (typeof body.notes === "string") {
         patch.notes = body.notes.trim().slice(0, 2000);
+      }
+      if (typeof body.postBody === "string") {
+        const trimmed = body.postBody.trim().slice(0, 60000);
+        patch.postBody = trimmed || null;
       }
       if (typeof body.title === "string" && body.title.trim().length >= 5) {
         patch.title = body.title.trim().slice(0, 200);

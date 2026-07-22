@@ -16,6 +16,9 @@ export interface AnalyzedTopic {
   title: string;
   targetKeyword: string | null;
   notes: string | null;
+  // Optional draft body — when present, the analyzer also runs
+  // content-quality checks against it.
+  postBody: string | null;
   kanbanColumn: AnalyzerColumn;
   analysis: AnalysisResult | null;
   enrichment: EnrichmentResult | null;

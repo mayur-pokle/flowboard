@@ -182,7 +182,11 @@ export function PipelineCard({
       role={interactive ? "button" : undefined}
       tabIndex={interactive ? 0 : undefined}
       className={cn(
-        "bg-white border border-ink-200 rounded-lg transition relative overflow-hidden",
+        // shrink-0 is critical: PipelineColumn is a flex-col, so
+        // without this, dozens of cards in an intake column collapse
+        // to nothing because overflow-hidden below removes their
+        // natural content-based min-height.
+        "bg-white border border-ink-200 rounded-lg transition relative overflow-hidden shrink-0",
         compact ? "p-2.5" : "p-3",
         !isDragOverlay && "hover:border-ink-300 hover:shadow-md",
         interactive && "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-1",
